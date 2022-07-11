@@ -95,7 +95,7 @@ ENTRY(efi64_thunk)
 	addq	$8, %rsp
 	pop	%rbx
 	pop	%rbp
-	ret
+	RET
 ENDPROC(efi64_thunk)
 
 ENTRY(efi_exit32)

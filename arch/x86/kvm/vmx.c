@@ -9910,14 +9910,6 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	vmx_arm_hv_timer(vcpu);
 
-	/*
-	 * If this vCPU has touched SPEC_CTRL, restore the guest's value if
-	 * it's non-zero. Since vmentry is serialising on affected CPUs, there
-	 * is no need to worry about the conditional branch over the wrmsr
-	 * being speculatively taken.
-	 */
-	x86_spec_ctrl_set_guest(vmx->spec_ctrl, 0);
-
 	vmx->__launched = vmx->loaded_vmcs->launched;
 
 	/* L1D Flush includes CPU buffer clear to mitigate MDS */
@@ -9930,6 +9922,14 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 		mds_clear_cpu_buffers();
 
 	vmx_disable_fb_clear(vmx);
+
+	/*
+	 * If this vCPU has touched SPEC_CTRL, restore the guest's value if
+	 * it's non-zero. Since vmentry is serialising on affected CPUs, there
+	 * is no need to worry about the conditional branch over the wrmsr
+	 * being speculatively taken.
+	 */
+	x86_spec_ctrl_set_guest(vmx->spec_ctrl, 0);
 
 	asm(
 		/* Store host registers */
@@ -10060,7 +10060,8 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 #endif
 	      );
 
-	vmx_enable_fb_clear(vmx);
+	/* Eliminate branch target predictions from guest mode */
+	vmexit_fill_RSB();
 
 	/*
 	 * We do not use IBRS in the kernel. If this vCPU has used the
@@ -10082,8 +10083,7 @@ static void __noclone vmx_vcpu_run(struct kvm_vcpu *vcpu)
 
 	x86_spec_ctrl_restore_host(vmx->spec_ctrl, 0);
 
-	/* Eliminate branch target predictions from guest mode */
-	vmexit_fill_RSB();
+	vmx_enable_fb_clear(vmx);
 
 	/* MSR_IA32_DEBUGCTLMSR is zeroed on vmexit. Restore it if needed */
 	if (debugctlmsr)

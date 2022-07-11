@@ -3,7 +3,6 @@
  *
  * Copyright 2000-2002 Andi Kleen, SuSE Labs.
  */
-#include "calling.h"
 #include <asm/asm-offsets.h>
 #include <asm/current.h>
 #include <asm/errno.h>
@@ -13,8 +12,11 @@
 #include <asm/irqflags.h>
 #include <asm/asm.h>
 #include <asm/smap.h>
+#include <asm/nospec-branch.h>
 #include <linux/linkage.h>
 #include <linux/err.h>
+
+#include "calling.h"
 
 	.section .entry.text, "ax"
 
@@ -53,8 +55,6 @@ ENTRY(entry_SYSENTER_compat)
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rsp
 
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
-	/* Restrict Indirect Branch Speculation */
-	RESTRICT_IB_SPEC
 
 	/*
 	 * User tracing code (ptrace or signal handlers) might assume that
@@ -106,6 +106,10 @@ ENTRY(entry_SYSENTER_compat)
 	pushq   $0			/* pt_regs->r15 = 0 */
 	xorl	%r15d, %r15d		/* nospec   r15 */
 	cld
+
+
+	RESTRICT_IB_SPEC
+	UNTRAIN_RET
 
 	/*
 	 * SYSENTER doesn't filter flags, so we need to clear NT and AC
@@ -247,6 +251,7 @@ GLOBAL(entry_SYSCALL_compat_after_hwframe)
 
 	/* Restrict Indirect Branch Speculation. All registers are saved already */
 	RESTRICT_IB_SPEC_CLOBBER
+	UNTRAIN_RET
 
 	/* User mode is traced as though IRQs are on, and SYSENTER
 	 * turned them off.
@@ -432,6 +437,8 @@ ENTRY(entry_INT80_compat)
 	 * gate turned them off.
 	 */
 	TRACE_IRQS_OFF
+
+	UNTRAIN_RET
 
 	movq	%rsp, %rdi
 	call	do_int80_syscall_32

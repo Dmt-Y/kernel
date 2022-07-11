@@ -58,7 +58,7 @@ ENTRY(efi64_thunk)
 	movq	efi_saved_sp(%rip), %rsp
 	pop	%rbx
 	pop	%rbp
-	retq
+	RET
 ENDPROC(efi64_thunk)
 
 /*

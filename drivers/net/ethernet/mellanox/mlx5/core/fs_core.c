@@ -2447,11 +2447,7 @@ static int init_sniffer_tx_root_ns(struct mlx5_flow_steering *steering)
 
 	/* Create single prio */
 	prio = fs_create_prio(&steering->sniffer_tx_root_ns->ns, 0, 1);
-	if (IS_ERR(prio)) {
-		cleanup_root_ns(steering->sniffer_tx_root_ns);
-		return PTR_ERR(prio);
-	}
-	return 0;
+	return PTR_ERR_OR_ZERO(prio);
 }
 
 static int init_sniffer_rx_root_ns(struct mlx5_flow_steering *steering)
@@ -2464,11 +2460,7 @@ static int init_sniffer_rx_root_ns(struct mlx5_flow_steering *steering)
 
 	/* Create single prio */
 	prio = fs_create_prio(&steering->sniffer_rx_root_ns->ns, 0, 1);
-	if (IS_ERR(prio)) {
-		cleanup_root_ns(steering->sniffer_rx_root_ns);
-		return PTR_ERR(prio);
-	}
-	return 0;
+	return PTR_ERR_OR_ZERO(prio);
 }
 
 static int init_fdb_root_ns(struct mlx5_flow_steering *steering)

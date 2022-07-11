@@ -68,7 +68,9 @@ ENTRY(sme_encrypt_execute)
 	movq	%rbp, %rsp		/* Restore original stack pointer */
 	pop	%rbp
 
+	/* Offset to __x86_return_thunk would be wrong here */
 	ret
+	int3
 ENDPROC(sme_encrypt_execute)
 
 ENTRY(__enc_copy)
@@ -154,6 +156,8 @@ ENTRY(__enc_copy)
 	pop	%r12
 	pop	%r15
 
+	/* Offset to __x86_return_thunk would be wrong here */
 	ret
+	int3
 .L__enc_copy_end:
 ENDPROC(__enc_copy)

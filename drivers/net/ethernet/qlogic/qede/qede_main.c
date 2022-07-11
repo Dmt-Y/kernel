@@ -1812,6 +1812,12 @@ static int qede_req_msix_irqs(struct qede_dev *edev)
 				 &edev->fp_array[i]);
 		if (rc) {
 			DP_ERR(edev, "Request fp %d irq failed\n", i);
+#ifdef CONFIG_RFS_ACCEL
+			if (edev->ndev->rx_cpu_rmap)
+				free_irq_cpu_rmap(edev->ndev->rx_cpu_rmap);
+
+			edev->ndev->rx_cpu_rmap = NULL;
+#endif
 			qede_sync_free_irqs(edev);
 			return rc;
 		}
@@ -2208,6 +2214,15 @@ static void qede_unload(struct qede_dev *edev, enum qede_unload_mode mode,
 
 		rc = qede_stop_queues(edev);
 		if (rc) {
+#ifdef CONFIG_RFS_ACCEL
+			if (!IS_VF(edev) && edev->dev_info.common.num_hwfns == 1) {
+				qede_poll_for_freeing_arfs_filters(edev);
+				if (edev->ndev->rx_cpu_rmap)
+					free_irq_cpu_rmap(edev->ndev->rx_cpu_rmap);
+
+				edev->ndev->rx_cpu_rmap = NULL;
+			}
+#endif
 			qede_sync_free_irqs(edev);
 			goto out;
 		}

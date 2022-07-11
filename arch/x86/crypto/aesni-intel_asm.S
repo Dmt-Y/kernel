@@ -1475,7 +1475,7 @@ _return_T_done_decrypt:
 	pop	%r14
 	pop	%r13
 	pop	%r12
-	ret
+	RET
 ENDPROC(aesni_gcm_dec)
 
 
@@ -1739,7 +1739,7 @@ _return_T_done_encrypt:
 	pop	%r14
 	pop	%r13
 	pop	%r12
-	ret
+	RET
 ENDPROC(aesni_gcm_enc)
 
 #endif
@@ -1756,7 +1756,7 @@ _key_expansion_256a:
 	pxor %xmm1, %xmm0
 	movaps %xmm0, (TKEYP)
 	add $0x10, TKEYP
-	ret
+	RET
 ENDPROC(_key_expansion_128)
 ENDPROC(_key_expansion_256a)
 
@@ -1782,7 +1782,7 @@ _key_expansion_192a:
 	shufps $0b01001110, %xmm2, %xmm1
 	movaps %xmm1, 0x10(TKEYP)
 	add $0x20, TKEYP
-	ret
+	RET
 ENDPROC(_key_expansion_192a)
 
 .align 4
@@ -1802,7 +1802,7 @@ _key_expansion_192b:
 
 	movaps %xmm0, (TKEYP)
 	add $0x10, TKEYP
-	ret
+	RET
 ENDPROC(_key_expansion_192b)
 
 .align 4
@@ -1815,7 +1815,7 @@ _key_expansion_256b:
 	pxor %xmm1, %xmm2
 	movaps %xmm2, (TKEYP)
 	add $0x10, TKEYP
-	ret
+	RET
 ENDPROC(_key_expansion_256b)
 
 /*
@@ -1930,7 +1930,7 @@ ENTRY(aesni_set_key)
 	popl KEYP
 #endif
 	FRAME_END
-	ret
+	RET
 ENDPROC(aesni_set_key)
 
 /*
@@ -1954,7 +1954,7 @@ ENTRY(aesni_enc)
 	popl KEYP
 #endif
 	FRAME_END
-	ret
+	RET
 ENDPROC(aesni_enc)
 
 /*
@@ -2012,7 +2012,7 @@ _aesni_enc1:
 	AESENC KEY STATE
 	movaps 0x70(TKEYP), KEY
 	AESENCLAST KEY STATE
-	ret
+	RET
 ENDPROC(_aesni_enc1)
 
 /*
@@ -2121,7 +2121,7 @@ _aesni_enc4:
 	AESENCLAST KEY STATE2
 	AESENCLAST KEY STATE3
 	AESENCLAST KEY STATE4
-	ret
+	RET
 ENDPROC(_aesni_enc4)
 
 /*
@@ -2146,7 +2146,7 @@ ENTRY(aesni_dec)
 	popl KEYP
 #endif
 	FRAME_END
-	ret
+	RET
 ENDPROC(aesni_dec)
 
 /*
@@ -2204,7 +2204,7 @@ _aesni_dec1:
 	AESDEC KEY STATE
 	movaps 0x70(TKEYP), KEY
 	AESDECLAST KEY STATE
-	ret
+	RET
 ENDPROC(_aesni_dec1)
 
 /*
@@ -2313,7 +2313,7 @@ _aesni_dec4:
 	AESDECLAST KEY STATE2
 	AESDECLAST KEY STATE3
 	AESDECLAST KEY STATE4
-	ret
+	RET
 ENDPROC(_aesni_dec4)
 
 /*
@@ -2373,7 +2373,7 @@ ENTRY(aesni_ecb_enc)
 	popl LEN
 #endif
 	FRAME_END
-	ret
+	RET
 ENDPROC(aesni_ecb_enc)
 
 /*
@@ -2434,7 +2434,7 @@ ENTRY(aesni_ecb_dec)
 	popl LEN
 #endif
 	FRAME_END
-	ret
+	RET
 ENDPROC(aesni_ecb_dec)
 
 /*
@@ -2478,7 +2478,7 @@ ENTRY(aesni_cbc_enc)
 	popl IVP
 #endif
 	FRAME_END
-	ret
+	RET
 ENDPROC(aesni_cbc_enc)
 
 /*
@@ -2571,7 +2571,7 @@ ENTRY(aesni_cbc_dec)
 	popl IVP
 #endif
 	FRAME_END
-	ret
+	RET
 ENDPROC(aesni_cbc_dec)
 
 #ifdef __x86_64__
@@ -2600,7 +2600,7 @@ _aesni_inc_init:
 	mov $1, TCTR_LOW
 	MOVQ_R64_XMM TCTR_LOW INC
 	MOVQ_R64_XMM CTR TCTR_LOW
-	ret
+	RET
 ENDPROC(_aesni_inc_init)
 
 /*
@@ -2629,7 +2629,7 @@ _aesni_inc:
 .Linc_low:
 	movaps CTR, IV
 	PSHUFB_XMM BSWAP_MASK IV
-	ret
+	RET
 ENDPROC(_aesni_inc)
 
 /*
@@ -2692,7 +2692,7 @@ ENTRY(aesni_ctr_enc)
 	movups IV, (IVP)
 .Lctr_enc_just_ret:
 	FRAME_END
-	ret
+	RET
 ENDPROC(aesni_ctr_enc)
 
 /*
@@ -2845,7 +2845,7 @@ ENTRY(aesni_xts_decrypt)
 	movups IV, (IVP)
 
 	FRAME_END
-	ret
+	RET
 ENDPROC(aesni_xts_decrypt)
 
 #endif

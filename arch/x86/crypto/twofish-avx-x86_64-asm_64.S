@@ -287,7 +287,7 @@ __twofish_enc_blk8:
 	outunpack_blocks(RC1, RD1, RA1, RB1, RK1, RX0, RY0, RK2);
 	outunpack_blocks(RC2, RD2, RA2, RB2, RK1, RX0, RY0, RK2);
 
-	ret;
+	RET;
 ENDPROC(__twofish_enc_blk8)
 
 .align 8
@@ -327,7 +327,7 @@ __twofish_dec_blk8:
 	outunpack_blocks(RA1, RB1, RC1, RD1, RK1, RX0, RY0, RK2);
 	outunpack_blocks(RA2, RB2, RC2, RD2, RK1, RX0, RY0, RK2);
 
-	ret;
+	RET;
 ENDPROC(__twofish_dec_blk8)
 
 ENTRY(twofish_ecb_enc_8way)
@@ -347,7 +347,7 @@ ENTRY(twofish_ecb_enc_8way)
 	store_8way(%r11, RC1, RD1, RA1, RB1, RC2, RD2, RA2, RB2);
 
 	FRAME_END
-	ret;
+	RET;
 ENDPROC(twofish_ecb_enc_8way)
 
 ENTRY(twofish_ecb_dec_8way)
@@ -367,7 +367,7 @@ ENTRY(twofish_ecb_dec_8way)
 	store_8way(%r11, RA1, RB1, RC1, RD1, RA2, RB2, RC2, RD2);
 
 	FRAME_END
-	ret;
+	RET;
 ENDPROC(twofish_ecb_dec_8way)
 
 ENTRY(twofish_cbc_dec_8way)
@@ -392,7 +392,7 @@ ENTRY(twofish_cbc_dec_8way)
 	popq %r12;
 
 	FRAME_END
-	ret;
+	RET;
 ENDPROC(twofish_cbc_dec_8way)
 
 ENTRY(twofish_ctr_8way)

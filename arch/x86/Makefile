@@ -21,7 +21,7 @@ CODE16GCC_CFLAGS := -m32 -Wa,$(srctree)/arch/x86/boot/code16gcc.h
 M16_CFLAGS	 := $(call cc-option, -m16, $(CODE16GCC_CFLAGS))
 
 REALMODE_CFLAGS	:= $(M16_CFLAGS) -g -Os -D__KERNEL__ \
-		   -DDISABLE_BRANCH_PROFILING \
+		   -DDISABLE_BRANCH_PROFILING -D__DISABLE_EXPORTS \
 		   -Wall -Wstrict-prototypes -march=i386 -mregparm=3 \
 		   -fno-strict-aliasing -fomit-frame-pointer -fno-pic \
 		   -mno-mmx -mno-sse \
@@ -230,8 +230,19 @@ KBUILD_AFLAGS += $(mflags-y)
 # Avoid indirect branches in kernel to deal with Spectre
 ifdef CONFIG_RETPOLINE
     RETPOLINE_CFLAGS += $(call cc-option,-mindirect-branch=thunk-extern -mindirect-branch-register)
-  KBUILD_CFLAGS += $(RETPOLINE_CFLAGS) -DRETPOLINE
+    RETPOLINE_CFLAGS += $(call cc-option,-mfunction-return=thunk-extern)
+    KBUILD_CFLAGS += $(RETPOLINE_CFLAGS) -DRETPOLINE
 endif
+
+# for vdso Makefile to exclude
+export RETPOLINE_CFLAGS
+
+ifdef CONFIG_SLS
+  KBUILD_CFLAGS += $(call cc-option,-mharden-sls=all)
+endif
+
+# RETHUNK
+KBUILD_CFLAGS += $(call cc-option,-mfunction-return=thunk-extern)
 
 archscripts: scripts_basic
 	$(Q)$(MAKE) $(build)=arch/x86/tools relocs

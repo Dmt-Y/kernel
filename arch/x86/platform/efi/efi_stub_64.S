@@ -53,5 +53,5 @@ ENTRY(efi_call)
 	addq $48, %rsp
 	RESTORE_XMM
 	popq %rbp
-	ret
+	RET
 ENDPROC(efi_call)

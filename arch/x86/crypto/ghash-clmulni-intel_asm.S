@@ -89,7 +89,7 @@ __clmul_gf128mul_ble:
 	psrlq $1, T2
 	pxor T2, T1
 	pxor T1, DATA
-	ret
+	RET
 ENDPROC(__clmul_gf128mul_ble)
 
 /* void clmul_ghash_mul(char *dst, const u128 *shash) */
@@ -103,7 +103,7 @@ ENTRY(clmul_ghash_mul)
 	PSHUFB_XMM BSWAP DATA
 	movups DATA, (%rdi)
 	FRAME_END
-	ret
+	RET
 ENDPROC(clmul_ghash_mul)
 
 /*
@@ -132,5 +132,5 @@ ENTRY(clmul_ghash_update)
 	movups DATA, (%rdi)
 .Lupdate_just_ret:
 	FRAME_END
-	ret
+	RET
 ENDPROC(clmul_ghash_update)
