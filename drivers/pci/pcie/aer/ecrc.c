@@ -1,5 +1,5 @@
 /*
- *    Enables/disables PCIe ECRC checking.
+ *    Enables/disables PCIe ECRC checking
  *
  *    (C) Copyright 2009 Hewlett-Packard Development Company, L.P.
  *    Andrew Patterson <andrew.patterson@hp.com>

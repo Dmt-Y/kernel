@@ -3167,6 +3167,14 @@ int pci_enable_atomic_ops_to_root(struct pci_dev *dev, u32 cap_mask)
 	struct pci_dev *bridge;
 	u32 cap, ctl2;
 
+	/*
+	 * Per PCIe r5.0, sec 9.3.5.10, the AtomicOp Requester Enable bit
+	 * in Device Control 2 is reserved in VFs and the PF value applies
+	 * to all associated VFs.
+	 */
+	if (dev->is_virtfn)
+		return -EINVAL;
+
 	if (!pci_is_pcie(dev))
 		return -EINVAL;
 
@@ -4283,6 +4291,7 @@ void pci_reset_secondary_bus(struct pci_dev *dev)
 	pci_read_config_word(dev, PCI_BRIDGE_CONTROL, &ctrl);
 	ctrl |= PCI_BRIDGE_CTL_BUS_RESET;
 	pci_write_config_word(dev, PCI_BRIDGE_CONTROL, ctrl);
+
 	/*
 	 * PCI spec v3.0 7.6.4.2 requires minimum Trst of 1ms.  Double
 	 * this to 2ms to ensure that we meet the minimum requirement.
@@ -5668,7 +5677,7 @@ static resource_size_t pci_specified_resource_alignment(struct pci_dev *dev,
 				if (align_order == -1)
 					align = PAGE_SIZE;
 				else
-					align = 1 << align_order;
+					align = 1ULL << align_order;
 				/* Found */
 				break;
 			}
@@ -5694,7 +5703,7 @@ static resource_size_t pci_specified_resource_alignment(struct pci_dev *dev,
 				if (align_order == -1)
 					align = PAGE_SIZE;
 				else
-					align = 1 << align_order;
+					align = 1ULL << align_order;
 				/* Found */
 				break;
 			}

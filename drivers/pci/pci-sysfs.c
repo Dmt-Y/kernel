@@ -11,7 +11,6 @@
  * File attributes for PCI devices
  *
  * Modeled after usb's driverfs.c
- *
  */
 
 

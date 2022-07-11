@@ -233,8 +233,16 @@ static struct page *get_arg_page(struct linux_binprm *bprm, unsigned long pos,
 		 * always add the entire size of the pointers, so that on the
 		 * last call to get_arg_page() we'll actually have the entire
 		 * correct size.
+		 *
+		 * In the case of argc = 0, make sure there is space for adding
+		 * a empty string (which will bump argc to 1), to ensure
+		 * confused userspace programs don't start processing from
+		 * argv[1], thinking argc can never be 0, to keep them from
+		 * walking envp by accident.
+		 * See do_execveat_common().
 		 */
-		ptr_size = (bprm->argc + bprm->envc) * sizeof(void *);
+		ptr_size = (max(bprm->argc, 1) + bprm->envc) * sizeof(void *);
+
 		if (ptr_size > ULONG_MAX - size)
 			goto fail;
 		size += ptr_size;
@@ -1763,6 +1771,11 @@ static int do_execveat_common(int fd, struct filename *filename,
 		goto out_unmark;
 
 	bprm->argc = count(argv, MAX_ARG_STRINGS);
+
+	if (bprm->argc == 0)
+		pr_warn_once("process '%s' launched '%s' with NULL argv: empty string added\n",
+			     current->comm, bprm->filename);
+
 	if ((retval = bprm->argc) < 0)
 		goto out;
 
@@ -1786,6 +1799,20 @@ static int do_execveat_common(int fd, struct filename *filename,
 	retval = copy_strings(bprm->argc, argv, bprm);
 	if (retval < 0)
 		goto out;
+
+	/*
+	 * When argv is empty, add an empty string ("") as argv[0] to
+	 * ensure confused userspace programs that start processing
+	 * from argv[1] won't end up walking envp. See also
+	 * bprm_stack_limits().
+	 */
+	if (bprm->argc == 0) {
+		static const char *dummy_argv0 = "";
+		retval = copy_strings_kernel(1, &dummy_argv0, bprm);
+		if (retval < 0)
+			goto out;
+		bprm->argc = 1;
+	}
 
 	would_dump(bprm, bprm->file);
 

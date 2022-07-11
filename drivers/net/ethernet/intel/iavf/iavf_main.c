@@ -3819,8 +3819,8 @@ static int iavf_suspend(struct pci_dev *pdev, pm_message_t state)
  **/
 static int iavf_resume(struct pci_dev *pdev)
 {
-	struct iavf_adapter *adapter = pci_get_drvdata(pdev);
-	struct net_device *netdev = adapter->netdev;
+	struct net_device *netdev = pci_get_drvdata(pdev);
+	struct iavf_adapter *adapter = netdev_priv(netdev);
 	u32 err;
 
 	pci_set_power_state(pdev, PCI_D0);

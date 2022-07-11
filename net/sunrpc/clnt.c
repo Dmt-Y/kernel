@@ -78,6 +78,7 @@ static void	call_connect_status(struct rpc_task *task);
 
 static __be32	*rpc_encode_header(struct rpc_task *task);
 static __be32	*rpc_verify_header(struct rpc_task *task);
+static int	rpc_ping_noreply(struct rpc_clnt *clnt);
 static int	rpc_ping(struct rpc_clnt *clnt);
 
 static void rpc_register_client(struct rpc_clnt *clnt)
@@ -477,6 +478,12 @@ static struct rpc_clnt *rpc_create_xprt(struct rpc_create_args *args,
 
 	if (!(args->flags & RPC_CLNT_CREATE_NOPING)) {
 		int err = rpc_ping(clnt);
+		if (err != 0) {
+			rpc_shutdown_client(clnt);
+			return ERR_PTR(err);
+		}
+	} else if (args->flags & RPC_CLNT_CREATE_CONNECTED) {
+		int err = rpc_ping_noreply(clnt);
 		if (err != 0) {
 			rpc_shutdown_client(clnt);
 			return ERR_PTR(err);
@@ -999,11 +1006,10 @@ out:
 }
 EXPORT_SYMBOL_GPL(rpc_bind_new_program);
 
-static struct rpc_xprt *
-rpc_task_get_xprt(struct rpc_clnt *clnt)
+struct rpc_xprt *
+rpc_task_get_xprt(struct rpc_clnt *clnt, struct rpc_xprt *xprt)
 {
 	struct rpc_xprt_switch *xps;
-	struct rpc_xprt *xprt= xprt_iter_get_next(&clnt->cl_xpi);
 
 	if (!xprt)
 		return NULL;
@@ -1069,7 +1075,13 @@ rpc_task_get_first_xprt(struct rpc_clnt *clnt)
 	xprt = xprt_get(rcu_dereference(clnt->cl_xprt));
 	rcu_read_unlock();
 
-	return xprt;
+	return rpc_task_get_xprt(clnt, xprt);
+}
+
+static struct rpc_xprt *
+rpc_task_get_next_xprt(struct rpc_clnt *clnt)
+{
+	return rpc_task_get_xprt(clnt, xprt_iter_get_next(&clnt->cl_xpi));
 }
 
 static
@@ -1080,7 +1092,7 @@ void rpc_task_set_transport(struct rpc_task *task, struct rpc_clnt *clnt)
 	if (task->tk_flags & RPC_TASK_NO_ROUND_ROBIN)
 		task->tk_xprt = rpc_task_get_first_xprt(clnt);
 	else
-		task->tk_xprt = rpc_task_get_xprt(clnt);
+		task->tk_xprt = rpc_task_get_next_xprt(clnt);
 }
 
 static
@@ -2240,7 +2252,10 @@ call_status(struct rpc_task *task)
 		task->tk_action = call_bind;
 		break;
 	case -ENOBUFS:
+	case -ENFILE:
+	case -ENOMEM:
 		rpc_delay(task, HZ>>2);
+		break;
 	case -EAGAIN:
 		task->tk_action = call_transmit;
 		break;
@@ -2569,6 +2584,10 @@ static void rpcproc_encode_null(void *rqstp, struct xdr_stream *xdr, void *obj)
 {
 }
 
+static struct rpc_procinfo rpcproc_null_noreply = {
+	.p_encode = rpcproc_encode_null,
+};
+
 static int rpcproc_decode_null(void *rqstp, struct xdr_stream *xdr, void *obj)
 {
 	return 0;
@@ -2617,6 +2636,46 @@ struct rpc_task *rpc_call_null(struct rpc_clnt *clnt, struct rpc_cred *cred, int
 	return rpc_call_null_helper(clnt, NULL, cred, flags, NULL, NULL);
 }
 EXPORT_SYMBOL_GPL(rpc_call_null);
+
+static void
+rpc_null_call_prepare(struct rpc_task *task, void *data)
+{
+	task->tk_flags &= ~RPC_TASK_NO_RETRANS_TIMEOUT;
+	rpc_call_start(task);
+}
+
+static const struct rpc_call_ops rpc_null_ops = {
+	.rpc_call_prepare = rpc_null_call_prepare,
+	.rpc_call_done = rpc_default_callback,
+};
+
+static int rpc_ping_noreply(struct rpc_clnt *clnt)
+{
+	struct rpc_message msg = {
+		.rpc_proc = &rpcproc_null_noreply,
+	};
+	struct rpc_task_setup task_setup_data = {
+		.rpc_client = clnt,
+		.rpc_message = &msg,
+		.callback_ops = &rpc_null_ops,
+		.flags = RPC_TASK_SOFT | RPC_TASK_SOFTCONN,
+	};
+	struct rpc_task	*task;
+	struct rpc_cred *cred;
+	int status;
+
+	cred = authnull_ops.lookup_cred(NULL, NULL, 0);
+
+	task = rpc_run_task(&task_setup_data);
+	if (IS_ERR(task)) {
+		put_rpccred(cred);
+		return PTR_ERR(task);
+	}
+	put_rpccred(cred);
+	status = task->tk_status;
+	rpc_put_task(task);
+	return status;
+}
 
 struct rpc_cb_add_xprt_calldata {
 	struct rpc_xprt_switch *xps;

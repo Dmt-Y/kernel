@@ -996,6 +996,9 @@ static int logi_dj_probe(struct hid_device *hdev,
 	struct dj_receiver_dev *djrcv_dev;
 	int retval;
 
+	if (!hid_is_usb(hdev))
+		return -EINVAL;
+
 	dbg_hid("%s called for ifnum %d\n", __func__,
 		intf->cur_altsetting->desc.bInterfaceNumber);
 

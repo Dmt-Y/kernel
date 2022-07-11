@@ -226,7 +226,7 @@ err_vma:
 }
 
 static struct i915_vma *
-vma_lookup(struct drm_i915_gem_object *obj,
+i915_vma_lookup(struct drm_i915_gem_object *obj,
 	   struct i915_address_space *vm,
 	   const struct i915_ggtt_view *view)
 {
@@ -276,12 +276,12 @@ i915_vma_instance(struct drm_i915_gem_object *obj,
 	GEM_BUG_ON(view && !i915_is_ggtt(vm));
 	GEM_BUG_ON(vm->closed);
 
-	vma = vma_lookup(obj, vm, view);
+	vma = i915_vma_lookup(obj, vm, view);
 	if (!vma)
 		vma = vma_create(obj, vm, view);
 
 	GEM_BUG_ON(!IS_ERR(vma) && i915_vma_compare(vma, vm, view));
-	GEM_BUG_ON(!IS_ERR(vma) && vma_lookup(obj, vm, view) != vma);
+	GEM_BUG_ON(!IS_ERR(vma) && i915_vma_lookup(obj, vm, view) != vma);
 	return vma;
 }
 
