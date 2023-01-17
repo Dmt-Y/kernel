@@ -629,6 +629,9 @@ nfsd_svc(int nrservs, struct net *net)
 	if (nrservs == 0 && nn->nfsd_serv == NULL)
 		goto out;
 
+	strlcpy(nn->nfsd_name, utsname()->nodename,
+		sizeof(nn->nfsd_name));
+
 	error = nfsd_create_serv(net);
 	if (error)
 		goto out;

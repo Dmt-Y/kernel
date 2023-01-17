@@ -2359,7 +2359,7 @@ xlog_recover_get_buf_lsn(
 	}
 
 	if (lsn != (xfs_lsn_t)-1) {
-		if (!uuid_equal(&mp->m_sb.sb_uuid, uuid))
+		if (!uuid_equal(&mp->m_sb.sb_meta_uuid, uuid))
 			goto recover_immediately;
 		return lsn;
 	}
@@ -2968,6 +2968,19 @@ out_free_ip:
 	return error;
 }
 
+static xfs_ictimestamp_t
+repair_malformed_inode_item_ts(struct xfs_legacy_ictimestamp *ts)
+{
+	struct xfs_legacy_ictimestamp	*lits;
+	xfs_ictimestamp_t		its;
+
+	lits = (struct xfs_legacy_ictimestamp *)&its;
+	lits->t_sec = ts->t_sec;
+	lits->t_nsec = ts->t_nsec;
+
+	return its;
+}
+
 /*
  * SUSE kernels 3.12.74-60.64.40 through 3.12.74-60.64.99 had a regression
  * where we would write out malformed inode items that would in turn
@@ -2997,8 +3010,8 @@ repair_malformed_inode_item(struct xlog *log, xfs_log_iovec_t *vec)
 		fixed.di_changecount	= mal->di_changecount;
 		fixed.di_lsn		= mal->di_lsn;
 		fixed.di_flags2		= mal->di_flags2;
-		fixed.di_crtime.t_sec	= mal->di_crtime.t_sec;
-		fixed.di_crtime.t_nsec	= mal->di_crtime.t_nsec;
+		fixed.di_crtime		=
+			repair_malformed_inode_item_ts(&mal->di_crtime);
 		fixed.di_ino		= mal->di_ino;
 		memcpy(&fixed.di_pad2, mal->di_pad2, sizeof(fixed.di_pad2));
 		uuid_copy(&fixed.di_uuid, &mal->di_uuid);

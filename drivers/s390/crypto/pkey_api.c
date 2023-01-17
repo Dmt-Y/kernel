@@ -39,9 +39,6 @@ MODULE_DESCRIPTION("s390 protected key interface");
 /* Size of vardata block used for some of the cca requests/replies */
 #define VARDATASIZE 4096
 
-/* mask of available pckmo subfunctions, fetched once at module init */
-static cpacf_mask_t pckmo_functions;
-
 /*
  * debug feature data and functions
  */
@@ -664,6 +661,9 @@ int pkey_clr2protkey(u32 keytype,
 		     const struct pkey_clrkey *clrkey,
 		     struct pkey_protkey *protkey)
 {
+	/* mask of available pckmo subfunctions */
+	static cpacf_mask_t pckmo_functions;
+
 	long fc;
 	int keysize;
 	u8 paramblock[64];
@@ -687,11 +687,13 @@ int pkey_clr2protkey(u32 keytype,
 		return -EINVAL;
 	}
 
-	/*
-	 * Check if the needed pckmo subfunction is available.
-	 * These subfunctions can be enabled/disabled by customers
-	 * in the LPAR profile or may even change on the fly.
-	 */
+	/* Did we already check for PCKMO ? */
+	if (!pckmo_functions.bytes[0]) {
+		/* no, so check now */
+		if (!cpacf_query(CPACF_PCKMO, &pckmo_functions))
+			return -ENODEV;
+	}
+	/* check for the pckmo subfunction we need now */
 	if (!cpacf_test_func(&pckmo_functions, fc)) {
 		DEBUG_ERR("%s pckmo functions not available\n", __func__);
 		return -EOPNOTSUPP;
@@ -1690,7 +1692,7 @@ static struct miscdevice pkey_dev = {
  */
 int __init pkey_init(void)
 {
-	cpacf_mask_t kmc_functions;
+	cpacf_mask_t func_mask;
 
 	/*
 	 * The pckmo instruction should be available - even if we don't
@@ -1698,15 +1700,15 @@ int __init pkey_init(void)
 	 * is also the minimum level for the kmc instructions which
 	 * are able to work with protected keys.
 	 */
-	if (!cpacf_query(CPACF_PCKMO, &pckmo_functions))
+	if (!cpacf_query(CPACF_PCKMO, &func_mask))
 		return -EOPNOTSUPP;
 
 	/* check for kmc instructions available */
-	if (!cpacf_query(CPACF_KMC, &kmc_functions))
+	if (!cpacf_query(CPACF_KMC, &func_mask))
 		return -EOPNOTSUPP;
-	if (!cpacf_test_func(&kmc_functions, CPACF_KMC_PAES_128) ||
-	    !cpacf_test_func(&kmc_functions, CPACF_KMC_PAES_192) ||
-	    !cpacf_test_func(&kmc_functions, CPACF_KMC_PAES_256))
+	if (!cpacf_test_func(&func_mask, CPACF_KMC_PAES_128) ||
+	    !cpacf_test_func(&func_mask, CPACF_KMC_PAES_192) ||
+	    !cpacf_test_func(&func_mask, CPACF_KMC_PAES_256))
 		return -EOPNOTSUPP;
 
 	pkey_debug_init();

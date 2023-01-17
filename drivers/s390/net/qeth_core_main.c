@@ -76,33 +76,12 @@ static void qeth_notify_skbs(struct qeth_qdio_out_q *queue,
 static void qeth_release_skbs(struct qeth_qdio_out_buffer *buf);
 static int qeth_init_qdio_out_buf(struct qeth_qdio_out_q *, int);
 
-static struct workqueue_struct *qeth_wq;
-
 int qeth_card_hw_is_reachable(struct qeth_card *card)
 {
 	return (card->state == CARD_STATE_SOFTSETUP) ||
 		(card->state == CARD_STATE_UP);
 }
 EXPORT_SYMBOL_GPL(qeth_card_hw_is_reachable);
-
-static void qeth_close_dev_handler(struct work_struct *work)
-{
-	struct qeth_card *card;
-
-	card = container_of(work, struct qeth_card, close_dev_work);
-	QETH_CARD_TEXT(card, 2, "cldevhdl");
-	rtnl_lock();
-	dev_close(card->dev);
-	rtnl_unlock();
-	ccwgroup_set_offline(card->gdev);
-}
-
-void qeth_close_dev(struct qeth_card *card)
-{
-	QETH_CARD_TEXT(card, 2, "cldevsubm");
-	queue_work(qeth_wq, &card->close_dev_work);
-}
-EXPORT_SYMBOL_GPL(qeth_close_dev);
 
 static const char *qeth_get_cardname(struct qeth_card *card)
 {
@@ -257,6 +236,9 @@ void qeth_clear_working_pool_list(struct qeth_card *card)
 			    &card->qdio.in_buf_pool.entry_list, list){
 			list_del(&pool_entry->list);
 	}
+
+	if (!queue)
+		return;
 
 	for (i = 0; i < ARRAY_SIZE(queue->bufs); i++)
 		queue->bufs[i].pool_entry = NULL;
@@ -460,6 +442,10 @@ static void qeth_cleanup_handled_pending(struct qeth_qdio_out_q *q, int bidx,
 				struct qeth_qdio_out_buffer *f = c;
 				QETH_CARD_TEXT(f->q->card, 5, "fp");
 				QETH_CARD_TEXT_(f->q->card, 5, "%lx", (long) f);
+
+				if (forced_cleanup)
+					qeth_notify_skbs(c->q, c,
+							 TX_NOTIFY_GENERALERROR);
 				/* release here to avoid interleaving between
 				   outbound tasklet and inbound tasklet
 				   regarding notifications and lifecycle */
@@ -674,10 +660,12 @@ static struct qeth_ipa_cmd *qeth_check_ipa_data(struct qeth_card *card,
 	case IPA_CMD_STOPLAN:
 		if (cmd->hdr.return_code == IPA_RC_VEPA_TO_VEB_TRANSITION) {
 			dev_err(&card->gdev->dev,
-				"Interface %s is down because the adjacent port is no longer in reflective relay mode\n",
+				"Adjacent port of interface %s is no longer in reflective relay mode, trigger recovery\n",
 				QETH_CARD_IFNAME(card));
-			qeth_close_dev(card);
+			/* Set offline, then probably fail to set online: */
+			qeth_schedule_recovery(card);
 		} else {
+			/* stay online for subsequent STARTLAN */
 			dev_warn(&card->gdev->dev,
 				 "The link for interface %s on CHPID 0x%X failed\n",
 				 QETH_CARD_IFNAME(card), card->info.chpid);
@@ -1211,9 +1199,6 @@ static void qeth_release_skbs(struct qeth_qdio_out_buffer *buf)
 {
 	struct sk_buff *skb;
 
-	if (atomic_read(&buf->state) == QETH_QDIO_BUF_PENDING)
-		qeth_notify_skbs(buf->q, buf, TX_NOTIFY_GENERALERROR);
-
 	while ((skb = __skb_dequeue(&buf->skb_list)) != NULL)
 		consume_skb(skb);
 }
@@ -1481,7 +1466,6 @@ static void qeth_setup_card(struct qeth_card *card)
 	INIT_LIST_HEAD(&card->ipato.entries);
 	qeth_init_qdio_info(card);
 	INIT_DELAYED_WORK(&card->buffer_reclaim_work, qeth_buffer_reclaim_work);
-	INIT_WORK(&card->close_dev_work, qeth_close_dev_handler);
 }
 
 static void qeth_core_sl_print(struct seq_file *m, struct service_level *slr)
@@ -2447,20 +2431,33 @@ static void qeth_free_output_queue(struct qeth_qdio_out_q *q)
 static struct qeth_qdio_out_q *qeth_alloc_qdio_out_buf(void)
 {
 	struct qeth_qdio_out_q *q = kzalloc(sizeof(*q), GFP_KERNEL);
+	unsigned int i;
 
 	if (!q)
 		return NULL;
 
-	if (qdio_alloc_buffers(q->qdio_bufs, QDIO_MAX_BUFFERS_PER_Q)) {
-		kfree(q);
-		return NULL;
+	if (qdio_alloc_buffers(q->qdio_bufs, QDIO_MAX_BUFFERS_PER_Q))
+		goto err_qdio_bufs;
+
+	for (i = 0; i < QDIO_MAX_BUFFERS_PER_Q; i++) {
+		if (qeth_init_qdio_out_buf(q, i))
+			goto err_out_bufs;
 	}
+
 	return q;
+
+err_out_bufs:
+	while (i > 0)
+		kmem_cache_free(qeth_qdio_outbuf_cache, q->bufs[--i]);
+	qdio_free_buffers(q->qdio_bufs, QDIO_MAX_BUFFERS_PER_Q);
+err_qdio_bufs:
+	kfree(q);
+	return NULL;
 }
 
 static int qeth_alloc_qdio_buffers(struct qeth_card *card)
 {
-	int i, j;
+	unsigned int i;
 
 	QETH_DBF_TEXT(SETUP, 2, "allcqdbf");
 
@@ -2490,12 +2487,6 @@ static int qeth_alloc_qdio_buffers(struct qeth_card *card)
 		QETH_DBF_TEXT_(SETUP, 2, "outq %i", i);
 		QETH_DBF_HEX(SETUP, 2, &card->qdio.out_qs[i], sizeof(void *));
 		card->qdio.out_qs[i]->queue_no = i;
-		/* give outbound qeth_qdio_buffers their qdio_buffers */
-		for (j = 0; j < QDIO_MAX_BUFFERS_PER_Q; ++j) {
-			WARN_ON(card->qdio.out_qs[i]->bufs[j] != NULL);
-			if (qeth_init_qdio_out_buf(card->qdio.out_qs[i], j))
-				goto out_freeoutqbufs;
-		}
 	}
 
 	/* completion */
@@ -2504,13 +2495,6 @@ static int qeth_alloc_qdio_buffers(struct qeth_card *card)
 
 	return 0;
 
-out_freeoutqbufs:
-	while (j > 0) {
-		--j;
-		kmem_cache_free(qeth_qdio_outbuf_cache,
-				card->qdio.out_qs[i]->bufs[j]);
-		card->qdio.out_qs[i]->bufs[j] = NULL;
-	}
 out_freeoutq:
 	while (i > 0)
 		qeth_free_output_queue(card->qdio.out_qs[--i]);
@@ -6789,12 +6773,6 @@ static int __init qeth_core_init(void)
 	INIT_LIST_HEAD(&qeth_core_card_list.list);
 	rwlock_init(&qeth_core_card_list.rwlock);
 
-	qeth_wq = create_singlethread_workqueue("qeth_wq");
-	if (!qeth_wq) {
-		rc = -ENOMEM;
-		goto out_err;
-	}
-
 	rc = qeth_register_dbf_views();
 	if (rc)
 		goto dbf_err;
@@ -6836,8 +6814,6 @@ slab_err:
 register_err:
 	qeth_unregister_dbf_views();
 dbf_err:
-	destroy_workqueue(qeth_wq);
-out_err:
 	pr_err("Initializing the qeth device driver failed\n");
 	return rc;
 }
@@ -6845,7 +6821,6 @@ out_err:
 static void __exit qeth_core_exit(void)
 {
 	qeth_clear_dbf_list();
-	destroy_workqueue(qeth_wq);
 	ccwgroup_driver_unregister(&qeth_core_ccwgroup_driver);
 	ccw_driver_unregister(&qeth_ccw_driver);
 	kmem_cache_destroy(qeth_qdio_outbuf_cache);

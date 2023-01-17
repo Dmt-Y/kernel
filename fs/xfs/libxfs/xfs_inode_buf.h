@@ -47,8 +47,13 @@ struct xfs_icdinode {
 	uint64_t	di_flags2;	/* more random flags */
 	uint32_t	di_cowextsize;	/* basic cow extent size for file */
 
-	xfs_ictimestamp_t di_crtime;	/* time created */
+	struct timespec64 di_crtime;	/* time created */
 };
+
+static inline bool xfs_icdinode_has_bigtime(const struct xfs_icdinode *icd)
+{
+	return icd->di_flags2 & XFS_DIFLAG2_BIGTIME;
+}
 
 /*
  * Inode location information.  Stored in the inode and passed to
@@ -82,5 +87,13 @@ void	xfs_inobp_check(struct xfs_mount *, struct xfs_buf *);
 
 bool	xfs_dinode_verify(struct xfs_mount *mp, xfs_ino_t ino,
 			  struct xfs_dinode *dip);
+
+static inline uint64_t xfs_inode_encode_bigtime(struct timespec64 tv)
+{
+	return xfs_unix_to_bigtime(tv.tv_sec) * NSEC_PER_SEC + tv.tv_nsec;
+}
+
+struct timespec64 xfs_inode_from_disk_ts(struct xfs_dinode *dip,
+		const xfs_timestamp_t ts);
 
 #endif	/* __XFS_INODE_BUF_H__ */

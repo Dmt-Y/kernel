@@ -172,6 +172,7 @@ struct qed_rdma_qp {
 	void *shared_queue;
 	dma_addr_t shared_queue_phys_addr;
 	struct qed_iwarp_ep *ep;
+	u8 edpm_mode;
 };
 
 #if IS_ENABLED(CONFIG_QED_RDMA)

@@ -572,14 +572,8 @@ static int kvm_read_nested_guest_page(struct kvm_vcpu *vcpu, gfn_t gfn,
 				       data, offset, len, access);
 }
 
-static inline u64 pdptr_rsvd_bits(struct kvm_vcpu *vcpu)
-{
-	return rsvd_bits(cpuid_maxphyaddr(vcpu), 63) | rsvd_bits(5, 8) |
-	       rsvd_bits(1, 2);
-}
-
 /*
- * Load the pae pdptrs.  Return 1 if they are all valid, 0 otherwise.
+ * Load the pae pdptrs.  Return true is they are all valid.
  */
 int load_pdptrs(struct kvm_vcpu *vcpu, struct kvm_mmu *mmu, unsigned long cr3)
 {
@@ -598,7 +592,8 @@ int load_pdptrs(struct kvm_vcpu *vcpu, struct kvm_mmu *mmu, unsigned long cr3)
 	}
 	for (i = 0; i < ARRAY_SIZE(pdpte); ++i) {
 		if ((pdpte[i] & PT_PRESENT_MASK) &&
-		    (pdpte[i] & pdptr_rsvd_bits(vcpu))) {
+		    (pdpte[i] &
+		     vcpu->arch.mmu.guest_rsvd_check.rsvd_bits_mask[0][2])) {
 			ret = 0;
 			goto out;
 		}
@@ -1075,7 +1070,7 @@ static unsigned num_emulated_msrs;
  * can be used by a hypervisor to validate requested CPU features.
  */
 static u32 msr_based_features[] = {
-	MSR_F10H_DECFG,
+	MSR_AMD64_DE_CFG,
 	MSR_IA32_ARCH_CAPABILITIES,
 };
 

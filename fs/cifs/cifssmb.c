@@ -446,7 +446,7 @@ cifs_enable_signing(struct TCP_Server_Info *server, bool mnt_sign_required)
 {
 	bool srv_sign_required = server->sec_mode & server->vals->signing_required;
 	bool srv_sign_enabled = server->sec_mode & server->vals->signing_enabled;
-	bool mnt_sign_enabled = global_secflags & CIFSSEC_MAY_SIGN;
+	bool mnt_sign_enabled;
 
 	/*
 	 * Is signing required by mnt options? If not then check
@@ -751,7 +751,7 @@ cifs_echo_callback(struct mid_q_entry *mid)
 	struct TCP_Server_Info *server = mid->callback_data;
 	struct cifs_credits credits = { .value = 1, .instance = 0 };
 
-	DeleteMidQEntry(mid);
+	release_mid(mid);
 	add_credits(server, &credits, CIFS_ECHO_OP);
 }
 
@@ -1669,7 +1669,7 @@ cifs_readv_callback(struct mid_q_entry *mid)
 	}
 
 	queue_work(cifsiod_wq, &rdata->work);
-	DeleteMidQEntry(mid);
+	release_mid(mid);
 	add_credits(server, &credits, 0);
 }
 
@@ -2193,7 +2193,7 @@ cifs_writev_callback(struct mid_q_entry *mid)
 	}
 
 	queue_work(cifsiod_wq, &wdata->work);
-	DeleteMidQEntry(mid);
+	release_mid(mid);
 	add_credits(tcon->ses->server, &credits, 0);
 }
 
@@ -2619,7 +2619,8 @@ CIFSSMBPosixLock(const unsigned int xid, struct cifs_tcon *tcon,
 
 			pLockData->fl_start = le64_to_cpu(parm_data->start);
 			pLockData->fl_end = pLockData->fl_start +
-					le64_to_cpu(parm_data->length) - 1;
+				(le64_to_cpu(parm_data->length) ?
+				 le64_to_cpu(parm_data->length) - 1 : 0);
 			pLockData->fl_pid = le32_to_cpu(parm_data->pid);
 		}
 	}

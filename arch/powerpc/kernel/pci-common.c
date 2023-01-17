@@ -84,10 +84,6 @@ static int __init parse_disable_fixed_phb(char *p)
 }
 early_param("disable_fixed_phb", parse_disable_fixed_phb);
 
-/*
- * This function should run under locking protection, specifically
- * hose_spinlock.
- */
 static int get_phb_number(struct device_node *dn)
 {
 	int ret, phb_id = -1;
@@ -111,9 +107,11 @@ static int get_phb_number(struct device_node *dn)
 	if (!ret)
 		phb_id = (int)(prop & (MAX_PHBS - 1));
 
+	spin_lock(&hose_spinlock);
+
 	/* We need to be sure to not use the same PHB number twice. */
 	if ((phb_id >= 0) && !test_and_set_bit(phb_id, phb_bitmap))
-		return phb_id;
+		goto out_unlock;
 
  dynamic:
 	/*
@@ -123,6 +121,9 @@ static int get_phb_number(struct device_node *dn)
 	phb_id = find_first_zero_bit(phb_bitmap, MAX_PHBS);
 	BUG_ON(phb_id >= MAX_PHBS);
 	set_bit(phb_id, phb_bitmap);
+
+out_unlock:
+	spin_unlock(&hose_spinlock);
 
 	return phb_id;
 }
@@ -134,10 +135,13 @@ struct pci_controller *pcibios_alloc_controller(struct device_node *dev)
 	phb = zalloc_maybe_bootmem(sizeof(struct pci_controller), GFP_KERNEL);
 	if (phb == NULL)
 		return NULL;
-	spin_lock(&hose_spinlock);
+
 	phb->global_number = get_phb_number(dev);
+
+	spin_lock(&hose_spinlock);
 	list_add_tail(&phb->list_node, &hose_list);
 	spin_unlock(&hose_spinlock);
+
 	phb->dn = dev;
 	phb->is_dynamic = slab_is_available();
 #ifdef CONFIG_PPC64

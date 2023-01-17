@@ -409,7 +409,7 @@ void gnttab_end_foreign_access(grant_ref_t ref, int readonly,
 {
 	if (gnttab_try_end_foreign_access(ref)) {
 		if (page != 0)
-			free_page(page);
+			put_page(virt_to_page(page));
 	} else
 		gnttab_add_deferred(ref, readonly,
 				    page ? virt_to_page(page) : NULL);

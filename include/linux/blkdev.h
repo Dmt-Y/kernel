@@ -308,6 +308,13 @@ static inline unsigned short req_get_ioprio(struct request *req)
 	return req->ioprio;
 }
 
+static inline int blk_validate_block_size(unsigned long bsize)
+{
+	if (bsize < 512 || bsize > PAGE_SIZE || !is_power_of_2(bsize))
+		return -EINVAL;
+	return 0;
+}
+
 #include <linux/elevator.h>
 
 struct blk_queue_ctx;

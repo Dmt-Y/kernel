@@ -665,8 +665,9 @@ static int nfs_page_async_flush(struct page *page,
 		/*
 		 * Remove the problematic req upon fatal errors on the server
 		 */
-		if (nfs_error_is_fatal_on_server(ret))
+		if (nfs_error_is_fatal(ret))
 			nfs_context_set_write_error(req->wb_context, ret);
+		if (nfs_error_is_fatal_on_server(ret))
 			goto out_launder;
 		if (wbc->sync_mode == WB_SYNC_NONE)
 			ret = AOP_WRITEPAGE_ACTIVATE;

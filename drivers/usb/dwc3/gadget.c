@@ -174,7 +174,6 @@ void dwc3_gadget_del_and_unmap_request(struct dwc3_ep *dep,
 
 	req->started = false;
 	list_del(&req->list);
-	req->trb = NULL;
 	req->remaining = 0;
 	req->unaligned = false;
 	req->zero = false;
@@ -182,10 +181,14 @@ void dwc3_gadget_del_and_unmap_request(struct dwc3_ep *dep,
 	if (req->request.status == -EINPROGRESS)
 		req->request.status = status;
 
-	usb_gadget_unmap_request_by_dev(dwc->sysdev,
-				&req->request, req->direction);
+	if (req->trb)
+		usb_gadget_unmap_request_by_dev(dwc->sysdev,
+						&req->request, req->direction);
+
+	req->trb = NULL;
 
 	trace_dwc3_gadget_giveback(req);
+
 	if (dep->number > 1)
 		pm_runtime_put(dwc->dev);
 }
@@ -3216,6 +3219,8 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 		dev_err(dwc->dev, "failed to register udc\n");
 		goto err4;
 	}
+
+	dwc3_gadget_set_speed(&dwc->gadget, dwc->maximum_speed);
 
 	return 0;
 

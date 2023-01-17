@@ -366,6 +366,7 @@ struct temac_local {
 	int tx_bd_next;
 	int tx_bd_tail;
 	int rx_bd_ci;
+	int rx_bd_tail;
 };
 
 /* xilinx_temac.c */

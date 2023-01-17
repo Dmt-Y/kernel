@@ -2537,20 +2537,25 @@ lpfc_get_hba_model_desc(struct lpfc_hba *phba, uint8_t *mdp, uint8_t *descp)
 				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_ZEPHYR:
-		m = (typeof(m)){"LPe11000", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe11000", "PCIe",
+				 "Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_ZEPHYR_SCSP:
-		m = (typeof(m)){"LPe11000", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe11000", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_ZEPHYR_DCSP:
-		m = (typeof(m)){"LP2105", "PCIe", "FCoE Adapter"};
+		m = (typeof(m)){"LP2105", "PCIe",
+				"Obsolete, Unsupported FCoE Adapter"};
 		GE = 1;
 		break;
 	case PCI_DEVICE_ID_ZMID:
-		m = (typeof(m)){"LPe1150", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe1150", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_ZSMB:
-		m = (typeof(m)){"LPe111", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe111", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_LP101:
 		m = (typeof(m)){"LP101", "PCI-X",
@@ -2569,22 +2574,28 @@ lpfc_get_hba_model_desc(struct lpfc_hba *phba, uint8_t *mdp, uint8_t *descp)
 				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_SAT:
-		m = (typeof(m)){"LPe12000", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe12000", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_SAT_MID:
-		m = (typeof(m)){"LPe1250", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe1250", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_SAT_SMB:
-		m = (typeof(m)){"LPe121", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe121", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_SAT_DCSP:
-		m = (typeof(m)){"LPe12002-SP", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe12002-SP", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_SAT_SCSP:
-		m = (typeof(m)){"LPe12000-SP", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe12000-SP", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_SAT_S:
-		m = (typeof(m)){"LPe12000-S", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe12000-S", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_HORNET:
 		m = (typeof(m)){"LP21000", "PCIe",
@@ -2605,22 +2616,25 @@ lpfc_get_hba_model_desc(struct lpfc_hba *phba, uint8_t *mdp, uint8_t *descp)
 		break;
 	case PCI_DEVICE_ID_TIGERSHARK:
 		oneConnect = 1;
-		m = (typeof(m)){"OCe10100", "PCIe", "FCoE"};
+		m = (typeof(m)){"OCe10100", "PCIe",
+				"Obsolete, Unsupported FCoE Adapter"};
 		break;
 	case PCI_DEVICE_ID_TOMCAT:
 		oneConnect = 1;
-		m = (typeof(m)){"OCe11100", "PCIe", "FCoE"};
+		m = (typeof(m)){"OCe11100", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_FALCON:
 		m = (typeof(m)){"LPSe12002-ML1-E", "PCIe",
-				"EmulexSecure Fibre"};
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_BALIUS:
 		m = (typeof(m)){"LPVe12002", "PCIe Shared I/O",
 				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_LANCER_FC:
-		m = (typeof(m)){"LPe16000", "PCIe", "Fibre Channel Adapter"};
+		m = (typeof(m)){"LPe16000", "PCIe",
+				"Obsolete, Unsupported Fibre Channel Adapter"};
 		break;
 	case PCI_DEVICE_ID_LANCER_FC_VF:
 		m = (typeof(m)){"LPe16000", "PCIe",
@@ -2628,7 +2642,8 @@ lpfc_get_hba_model_desc(struct lpfc_hba *phba, uint8_t *mdp, uint8_t *descp)
 		break;
 	case PCI_DEVICE_ID_LANCER_FCOE:
 		oneConnect = 1;
-		m = (typeof(m)){"OCe15100", "PCIe", "FCoE"};
+		m = (typeof(m)){"OCe15100", "PCIe",
+				"Obsolete, Unsupported FCoE Adapter"};
 		break;
 	case PCI_DEVICE_ID_LANCER_FCOE_VF:
 		oneConnect = 1;
@@ -2647,7 +2662,8 @@ lpfc_get_hba_model_desc(struct lpfc_hba *phba, uint8_t *mdp, uint8_t *descp)
 	case PCI_DEVICE_ID_SKYHAWK:
 	case PCI_DEVICE_ID_SKYHAWK_VF:
 		oneConnect = 1;
-		m = (typeof(m)){"OCe14000", "PCIe", "FCoE"};
+		m = (typeof(m)){"OCe14000", "PCIe",
+				"Obsolete, Unsupported FCoE Adapter"};
 		break;
 	default:
 		m = (typeof(m)){"Unknown", "", ""};
@@ -5359,38 +5375,12 @@ lpfc_async_link_speed_to_read_top(struct lpfc_hba *phba, uint8_t speed_code)
 void
 lpfc_cgn_dump_rxmonitor(struct lpfc_hba *phba)
 {
-	struct rxtable_entry *entry;
-	int cnt = 0, head, tail, last, start;
-
-	head = atomic_read(&phba->rxtable_idx_head);
-	tail = atomic_read(&phba->rxtable_idx_tail);
-	if (!phba->rxtable || head == tail) {
-		lpfc_printf_log(phba, KERN_ERR, LOG_CGN_MGMT,
-				"4411 Rxtable is empty\n");
-		return;
-	}
-	last = tail;
-	start = head;
-
-	/* Display the last LPFC_MAX_RXMONITOR_DUMP entries from the rxtable */
-	while (start != last) {
-		if (start)
-			start--;
-		else
-			start = LPFC_MAX_RXMONITOR_ENTRY - 1;
-		entry = &phba->rxtable[start];
+	if (!phba->rx_monitor) {
 		lpfc_printf_log(phba, KERN_INFO, LOG_CGN_MGMT,
-				"4410 %02d: MBPI %lld Xmit %lld Cmpl %lld "
-				"Lat %lld ASz %lld Info %02d BWUtil %d "
-				"Int %d slot %d\n",
-				cnt, entry->max_bytes_per_interval,
-				entry->total_bytes, entry->rcv_bytes,
-				entry->avg_io_latency, entry->avg_io_size,
-				entry->cmf_info, entry->timer_utilization,
-				entry->timer_interval, start);
-		cnt++;
-		if (cnt >= LPFC_MAX_RXMONITOR_DUMP)
-			return;
+				"4411 Rx Monitor Info is empty.\n");
+	} else {
+		lpfc_rx_monitor_report(phba, phba->rx_monitor, NULL, 0,
+				       LPFC_MAX_RXMONITOR_DUMP);
 	}
 }
 
@@ -5810,9 +5800,8 @@ lpfc_cmf_timer(struct hrtimer *timer)
 {
 	struct lpfc_hba *phba = container_of(timer, struct lpfc_hba,
 					     cmf_timer);
-	struct rxtable_entry *entry;
+	struct rx_info_entry entry;
 	uint32_t io_cnt;
-	uint32_t head, tail;
 	uint32_t busy, max_read;
 	uint64_t total, rcv, lat, mbpi, extra, cnt;
 	int timer_interval = LPFC_CMF_INTERVAL;
@@ -5932,40 +5921,30 @@ lpfc_cmf_timer(struct hrtimer *timer)
 	}
 
 	/* Save rxmonitor information for debug */
-	if (phba->rxtable) {
-		head = atomic_xchg(&phba->rxtable_idx_head,
-				   LPFC_RXMONITOR_TABLE_IN_USE);
-		entry = &phba->rxtable[head];
-		entry->total_bytes = total;
-		entry->cmf_bytes = total + extra;
-		entry->rcv_bytes = rcv;
-		entry->cmf_busy = busy;
-		entry->cmf_info = phba->cmf_active_info;
+	if (phba->rx_monitor) {
+		entry.total_bytes = total;
+		entry.cmf_bytes = total + extra;
+		entry.rcv_bytes = rcv;
+		entry.cmf_busy = busy;
+		entry.cmf_info = phba->cmf_active_info;
 		if (io_cnt) {
-			entry->avg_io_latency = div_u64(lat, io_cnt);
-			entry->avg_io_size = div_u64(rcv, io_cnt);
+			entry.avg_io_latency = div_u64(lat, io_cnt);
+			entry.avg_io_size = div_u64(rcv, io_cnt);
 		} else {
-			entry->avg_io_latency = 0;
-			entry->avg_io_size = 0;
+			entry.avg_io_latency = 0;
+			entry.avg_io_size = 0;
 		}
-		entry->max_read_cnt = max_read;
-		entry->io_cnt = io_cnt;
-		entry->max_bytes_per_interval = mbpi;
+		entry.max_read_cnt = max_read;
+		entry.io_cnt = io_cnt;
+		entry.max_bytes_per_interval = mbpi;
 		if (phba->cmf_active_mode == LPFC_CFG_MANAGED)
-			entry->timer_utilization = phba->cmf_last_ts;
+			entry.timer_utilization = phba->cmf_last_ts;
 		else
-			entry->timer_utilization = ms;
-		entry->timer_interval = ms;
+			entry.timer_utilization = ms;
+		entry.timer_interval = ms;
 		phba->cmf_last_ts = 0;
 
-		/* Increment rxtable index */
-		head = (head + 1) % LPFC_MAX_RXMONITOR_ENTRY;
-		tail = atomic_read(&phba->rxtable_idx_tail);
-		if (head == tail) {
-			tail = (tail + 1) % LPFC_MAX_RXMONITOR_ENTRY;
-			atomic_set(&phba->rxtable_idx_tail, tail);
-		}
-		atomic_set(&phba->rxtable_idx_head, head);
+		lpfc_rx_monitor_record(phba->rx_monitor, &entry);
 	}
 
 	if (phba->cmf_active_mode == LPFC_CFG_MONITOR) {
@@ -7771,6 +7750,8 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 
 	/* The lpfc_wq workqueue for deferred irq use */
 	phba->wq = alloc_workqueue("lpfc_wq", WQ_MEM_RECLAIM, 0);
+	if (!phba->wq)
+		return -ENOMEM;
 
 	/*
 	 * Initialize timers used by driver
@@ -7870,7 +7851,7 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 	/* Allocate device driver memory */
 	rc = lpfc_mem_alloc(phba, SGL_ALIGN_SZ);
 	if (rc)
-		return -ENOMEM;
+		goto out_destroy_workqueue;
 
 	/* IF Type 2 ports get initialized now. */
 	if (bf_get(lpfc_sli_intf_if_type, &phba->sli4_hba.sli_intf) >=
@@ -8286,6 +8267,9 @@ out_free_bsmbx:
 	lpfc_destroy_bootstrap_mbox(phba);
 out_free_mem:
 	lpfc_mem_free(phba);
+out_destroy_workqueue:
+	destroy_workqueue(phba->wq);
+	phba->wq = NULL;
 	return rc;
 }
 

@@ -436,7 +436,7 @@ static __always_inline void __speculation_ctrl_update(unsigned long tifp,
 	}
 
 	if (updmsr)
-		wrmsrl(MSR_IA32_SPEC_CTRL, msr);
+		update_spec_ctrl_cond(msr);
 }
 
 static unsigned long speculation_ctrl_update_tif(struct task_struct *tsk)
@@ -670,20 +670,6 @@ static __cpuidle void mwait_idle(void)
 			mb(); /* quirk */
 		}
 
-		/*
-		 * Indirect Branch Speculation (IBS) is controlled per
-		 * physical core. If one thread disables it, then it's
-		 * disabled on all threads of the core. The kernel disables
-		 * it on entry from user space. For __sti_mwait() it's
-		 * wrong to reenable it because an interrupt can be served
-		 * before speculation can be stopped again.
-		 *
-		 * To plug that hole the interrupt entry code would need to
-		 * save current state and restore. Not worth the trouble as
-		 * SKL should not use mwait_idle(). It should use
-		 * mwait_idle_with_hints() which can do speculation control
-		 * safely.
-		 */
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		if (!need_resched())
 			__sti_mwait(0, 0);

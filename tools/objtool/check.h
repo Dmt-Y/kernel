@@ -26,14 +26,7 @@
 #include <linux/hashtable.h>
 
 struct insn_state {
-	struct cfi_reg cfa;
-	struct cfi_reg regs[CFI_NUM_REGS];
-	int stack_size;
-	unsigned char type;
-	bool bp_scratch;
-	bool drap;
-	int drap_reg, drap_offset;
-	struct cfi_reg vals[CFI_NUM_REGS];
+	struct cfi_state cfi;
 };
 
 struct instruction {
@@ -42,17 +35,18 @@ struct instruction {
 	struct section *sec;
 	unsigned long offset;
 	unsigned int len;
-	unsigned char type;
+	enum insn_type type;
 	unsigned long immediate;
-	bool alt_group, visited, dead_end, ignore, hint, save, restore, ignore_alts;
+	bool visited, dead_end, ignore, hint, save, restore, ignore_alts;
 	bool retpoline_safe;
+	int alt_group;
 	struct symbol *call_dest;
 	struct instruction *jump_dest;
 	struct instruction *first_jump_src;
 	struct list_head alts;
 	struct symbol *func;
-	struct stack_op stack_op;
-	struct insn_state state;
+	struct list_head stack_ops;
+	struct cfi_state cfi;
 	struct orc_entry orc;
 };
 

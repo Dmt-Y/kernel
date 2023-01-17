@@ -504,25 +504,25 @@ skip_ring_stats:
 		if (bp->pri2cos_valid) {
 			for (i = 0; i < 8; i++, j++) {
 				long n = bnxt_rx_bytes_pri_arr[i].base_off +
-					 bp->pri2cos[i];
+					 bp->pri2cos_idx[i];
 
 				buf[j] = le64_to_cpu(*(rx_port_stats_ext + n));
 			}
 			for (i = 0; i < 8; i++, j++) {
 				long n = bnxt_rx_pkts_pri_arr[i].base_off +
-					 bp->pri2cos[i];
+					 bp->pri2cos_idx[i];
 
 				buf[j] = le64_to_cpu(*(rx_port_stats_ext + n));
 			}
 			for (i = 0; i < 8; i++, j++) {
 				long n = bnxt_tx_bytes_pri_arr[i].base_off +
-					 bp->pri2cos[i];
+					 bp->pri2cos_idx[i];
 
 				buf[j] = le64_to_cpu(*(tx_port_stats_ext + n));
 			}
 			for (i = 0; i < 8; i++, j++) {
 				long n = bnxt_tx_pkts_pri_arr[i].base_off +
-					 bp->pri2cos[i];
+					 bp->pri2cos_idx[i];
 
 				buf[j] = le64_to_cpu(*(tx_port_stats_ext + n));
 			}
@@ -646,8 +646,13 @@ static void bnxt_get_ringparam(struct net_device *dev,
 {
 	struct bnxt *bp = netdev_priv(dev);
 
-	ering->rx_max_pending = BNXT_MAX_RX_DESC_CNT;
-	ering->rx_jumbo_max_pending = BNXT_MAX_RX_JUM_DESC_CNT;
+	if (bp->flags & BNXT_FLAG_AGG_RINGS) {
+		ering->rx_max_pending = BNXT_MAX_RX_DESC_CNT_JUM_ENA;
+		ering->rx_jumbo_max_pending = BNXT_MAX_RX_JUM_DESC_CNT;
+	} else {
+		ering->rx_max_pending = BNXT_MAX_RX_DESC_CNT;
+		ering->rx_jumbo_max_pending = 0;
+	}
 	ering->tx_max_pending = BNXT_MAX_TX_DESC_CNT;
 
 	ering->rx_pending = bp->rx_ring_size;
@@ -662,7 +667,7 @@ static int bnxt_set_ringparam(struct net_device *dev,
 
 	if ((ering->rx_pending > BNXT_MAX_RX_DESC_CNT) ||
 	    (ering->tx_pending > BNXT_MAX_TX_DESC_CNT) ||
-	    (ering->tx_pending <= MAX_SKB_FRAGS))
+	    (ering->tx_pending < BNXT_MIN_TX_DESC_CNT))
 		return -EINVAL;
 
 	if (netif_running(dev))

@@ -217,9 +217,9 @@ static void pv_init(void)
 		return;
 
 	/* make sure bounce buffers are shared */
+	swiotlb_force = SWIOTLB_FORCE;
 	swiotlb_init(1);
 	swiotlb_update_mem_attributes();
-	swiotlb_force = SWIOTLB_FORCE;
 	/* use swiotlb_dma_ops */
 	s390_dma_ops = &s390_pv_dma_ops;
 }

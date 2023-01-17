@@ -226,8 +226,6 @@ nfsd_proc_write(struct svc_rqst *rqstp, struct nfsd_writeargs *argp,
 		argp->len, argp->offset);
 
 	nvecs = svc_fill_write_vector(rqstp, &argp->first, cnt);
-	if (!nvecs)
-		return nfserr_io;
 	nfserr = nfsd_write(rqstp, fh_copy(&resp->fh, &argp->fh),
 			    argp->offset, rqstp->rq_vec, nvecs,
 			    &cnt, NFS_DATA_SYNC);
@@ -532,8 +530,11 @@ nfsd_proc_readdir(struct svc_rqst *rqstp, struct nfsd_readdirargs *argp,
 		SVCFH_fmt(&argp->fh),		
 		argp->count, argp->cookie);
 
+	count = argp->count;
+	if (count > PAGE_SIZE)
+		count = PAGE_SIZE;
 	/* Shrink to the client read size */
-	count = (argp->count >> 2) - 2;
+	count = (count >> 2) - 2;
 
 	/* Make sure we've room for the NULL ptr & eof flag */
 	count -= 2;

@@ -478,8 +478,8 @@ static void __init find_and_init_phbs(void)
 	struct device_node *root = of_find_node_by_path("/");
 
 	for_each_child_of_node(root, node) {
-		if (node->type == NULL || (strcmp(node->type, "pci") != 0 &&
-					   strcmp(node->type, "pciex") != 0))
+		if (!of_node_is_type(node, "pci") &&
+		    !of_node_is_type(node, "pciex"))
 			continue;
 
 		phb = pcibios_alloc_controller(node);
@@ -833,6 +833,7 @@ static void __init pSeries_setup_arch(void)
 	}
 
 	ppc_md.pcibios_root_bridge_prepare = pseries_root_bridge_prepare;
+	pseries_rng_init();
 }
 
 static void pseries_panic(char *str)
@@ -1024,11 +1025,7 @@ static void pseries_power_off(void)
 
 static int __init pSeries_probe(void)
 {
-	const char *dtype = of_get_property(of_root, "device_type", NULL);
-
- 	if (dtype == NULL)
- 		return 0;
- 	if (strcmp(dtype, "chrp"))
+	if (!of_node_is_type(of_root, "chrp"))
 		return 0;
 
 	/* Cell blades firmware claims to be chrp while it's not. Until this

@@ -851,9 +851,17 @@ static int virtblk_probe(struct virtio_device *vdev)
 	err = virtio_cread_feature(vdev, VIRTIO_BLK_F_BLK_SIZE,
 				   struct virtio_blk_config, blk_size,
 				   &blk_size);
-	if (!err)
+	if (!err) {
+		err = blk_validate_block_size(blk_size);
+		if (err) {
+			dev_err(&vdev->dev,
+				"virtio_blk: invalid block size: 0x%x\n",
+				blk_size);
+			goto out_free_tags;
+		}
+
 		blk_queue_logical_block_size(q, blk_size);
-	else
+	} else
 		blk_size = queue_logical_block_size(q);
 
 	/* Use topology information if available */
@@ -1004,7 +1012,7 @@ static struct virtio_driver virtio_blk = {
 #endif
 };
 
-static int __init init(void)
+static int __init virtio_blk_init(void)
 {
 	int error;
 
@@ -1030,14 +1038,14 @@ out_destroy_workqueue:
 	return error;
 }
 
-static void __exit fini(void)
+static void __exit virtio_blk_fini(void)
 {
 	unregister_virtio_driver(&virtio_blk);
 	unregister_blkdev(major, "virtblk");
 	destroy_workqueue(virtblk_wq);
 }
-module_init(init);
-module_exit(fini);
+module_init(virtio_blk_init);
+module_exit(virtio_blk_fini);
 
 MODULE_DEVICE_TABLE(virtio, id_table);
 MODULE_DESCRIPTION("Virtio block driver");

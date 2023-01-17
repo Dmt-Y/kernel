@@ -42,7 +42,7 @@ ENTRY(__memmove)
 	jg 2f
 
 .Lmemmove_begin_forward:
-	ALTERNATIVE "", "movq %rdx, %rcx; rep movsb; retq", X86_FEATURE_ERMS
+	ALTERNATIVE "", "jmp .Lmemmove_erms", X86_FEATURE_ERMS
 
 	/*
 	 * movsq instruction have many startup latency
@@ -205,7 +205,12 @@ ENTRY(__memmove)
 	movb (%rsi), %r11b
 	movb %r11b, (%rdi)
 13:
-	retq
+	RET
+
+.Lmemmove_erms:
+        movq %rdx, %rcx
+        rep movsb
+        RET
 ENDPROC(__memmove)
 ENDPROC(memmove)
 EXPORT_SYMBOL(__memmove)

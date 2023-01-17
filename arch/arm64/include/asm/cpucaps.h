@@ -54,7 +54,8 @@
 #define ARM64_HAS_CACHE_DIC			33
 #define ARM64_MISMATCHED_CACHE_TYPE		34
 #define ARM64_WORKAROUND_1542419		35
-#define ARM64_SPECTRE_BHB			28
+#define ARM64_WORKAROUND_1742098		36
+#define ARM64_SPECTRE_BHB			37
 
 /* kabi: reserve 36 - 40 for future cpu capabilities */
 #define ARM64_NCAPS				40

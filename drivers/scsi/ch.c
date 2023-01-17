@@ -596,15 +596,15 @@ ch_open(struct inode *inode, struct file *file)
 	spin_lock(&ch_index_lock);
 	ch = idr_find(&ch_index_idr, minor);
 
-	if (NULL == ch || kref_get_unless_zero(&ch->ref)) {
+	if (ch == NULL || !kref_get_unless_zero(&ch->ref)) {
 		spin_unlock(&ch_index_lock);
 		mutex_unlock(&ch_mutex);
 		return -ENXIO;
 	}
 	spin_unlock(&ch_index_lock);
-
-	if (!ch->device || scsi_device_get(ch->device)) {
+	if (scsi_device_get(ch->device)) {
 		kref_put(&ch->ref, ch_destroy);
+		mutex_unlock(&ch_mutex);
 		return -ENXIO;
 	}
 	file->private_data = ch;
@@ -940,6 +940,12 @@ static int ch_probe(struct device *dev)
 
 	ch->minor = ret;
 	sprintf(ch->name,"ch%d",ch->minor);
+	ret = scsi_device_get(sd);
+	if (ret) {
+		sdev_printk(KERN_WARNING, sd, "ch%d: failed to get device\n",
+			    ch->minor);
+		goto remove_idr;
+	}
 
 	class_dev = device_create(ch_sysfs_class, dev,
 				  MKDEV(SCSI_CHANGER_MAJOR, ch->minor), ch,
@@ -948,7 +954,7 @@ static int ch_probe(struct device *dev)
 		sdev_printk(KERN_WARNING, sd, "ch%d: device_create failed\n",
 			    ch->minor);
 		ret = PTR_ERR(class_dev);
-		goto remove_idr;
+		goto put_device;
 	}
 
 	mutex_init(&ch->lock);
@@ -966,6 +972,8 @@ static int ch_probe(struct device *dev)
 	return 0;
 destroy_dev:
 	device_destroy(ch_sysfs_class, MKDEV(SCSI_CHANGER_MAJOR, ch->minor));
+put_device:
+	scsi_device_put(sd);
 remove_idr:
 	idr_remove(&ch_index_idr, ch->minor);
 free_ch:
@@ -983,6 +991,7 @@ static int ch_remove(struct device *dev)
 	spin_unlock(&ch_index_lock);
 
 	device_destroy(ch_sysfs_class, MKDEV(SCSI_CHANGER_MAJOR,ch->minor));
+	scsi_device_put(ch->device);
 	kref_put(&ch->ref, ch_destroy);
 	return 0;
 }

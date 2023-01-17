@@ -64,6 +64,7 @@ lkdtm-$(CONFIG_LKDTM)		+= lkdtm_rodata_objcopy.o
 lkdtm-$(CONFIG_LKDTM)		+= lkdtm_usercopy.o
 
 KCOV_INSTRUMENT_lkdtm_rodata.o	:= n
+CFLAGS_REMOVE_lkdtm_rodata.o	+= $(RETHUNK_CFLAGS)
 
 OBJCOPYFLAGS :=
 OBJCOPYFLAGS_lkdtm_rodata_objcopy.o := \

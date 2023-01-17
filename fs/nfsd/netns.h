@@ -119,6 +119,8 @@ struct nfsd_net {
 	u32 clverifier_counter;
 
 	struct svc_serv *nfsd_serv;
+	/* utsname taken from the the process that starts the server */
+	char			nfsd_name[UNX_MAXNODENAME+1];
 };
 
 /* Simple check to find out if a given net was properly initialized */

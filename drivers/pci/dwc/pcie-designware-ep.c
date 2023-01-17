@@ -394,8 +394,9 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 	ep->msi_mem = pci_epc_mem_alloc_addr(epc, &ep->msi_mem_phys,
 					     epc->mem->page_size);
 	if (!ep->msi_mem) {
+		ret = -ENOMEM;
 		dev_err(dev, "Failed to reserve memory for MSI\n");
-		return -ENOMEM;
+		goto err_exit_epc_mem;
 	}
 
 	ep->epc = epc;
@@ -403,4 +404,9 @@ int dw_pcie_ep_init(struct dw_pcie_ep *ep)
 	dw_pcie_setup(pci);
 
 	return 0;
+
+err_exit_epc_mem:
+	pci_epc_mem_exit(epc);
+
+	return ret;
 }

@@ -47,6 +47,7 @@ Constructor parameters:
 		  with nofua. The user should test it
 
 Status:
+
 1. error indicator - 0 if there was no error, otherwise error number
 2. the number of blocks
 3. the number of free blocks

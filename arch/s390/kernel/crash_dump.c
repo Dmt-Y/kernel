@@ -197,7 +197,7 @@ static int copy_oldmem_user(void __user *dst, void *src, size_t count)
 			} else {
 				len = count;
 			}
-			rc = copy_to_user_real(dst, (void *) from, count);
+			rc = copy_to_user_real(dst, (void *) from, len);
 			if (rc)
 				return rc;
 		}
@@ -224,7 +224,9 @@ ssize_t copy_oldmem_page(unsigned long pfn, char *buf, size_t csize,
 		rc = copy_oldmem_user((void __force __user *) buf, src, csize);
 	else
 		rc = copy_oldmem_kernel((void *) buf, src, csize);
-	return rc;
+	if (rc < 0)
+		return rc;
+	return csize;
 }
 
 /*

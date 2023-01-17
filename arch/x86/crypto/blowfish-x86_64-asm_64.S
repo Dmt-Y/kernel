@@ -150,10 +150,10 @@ ENTRY(__blowfish_enc_blk)
 	jnz .L__enc_xor;
 
 	write_block();
-	ret;
+	RET;
 .L__enc_xor:
 	xor_block();
-	ret;
+	RET;
 ENDPROC(__blowfish_enc_blk)
 
 ENTRY(blowfish_dec_blk)
@@ -185,7 +185,7 @@ ENTRY(blowfish_dec_blk)
 
 	movq %r11, %r12;
 
-	ret;
+	RET;
 ENDPROC(blowfish_dec_blk)
 
 /**********************************************************************
@@ -337,14 +337,14 @@ ENTRY(__blowfish_enc_blk_4way)
 
 	popq %rbx;
 	popq %r12;
-	ret;
+	RET;
 
 .L__enc_xor4:
 	xor_block4();
 
 	popq %rbx;
 	popq %r12;
-	ret;
+	RET;
 ENDPROC(__blowfish_enc_blk_4way)
 
 ENTRY(blowfish_dec_blk_4way)
@@ -379,5 +379,5 @@ ENTRY(blowfish_dec_blk_4way)
 	popq %rbx;
 	popq %r12;
 
-	ret;
+	RET;
 ENDPROC(blowfish_dec_blk_4way)

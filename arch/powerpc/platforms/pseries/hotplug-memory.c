@@ -195,6 +195,7 @@ static int update_lmb_associativity_index(struct drmem_lmb *lmb)
 
 	found = find_aa_index(dr_node, ala_prop, lmb_assoc, &aa_index);
 
+	of_node_put(dr_node);
 	dlpar_free_cc_nodes(lmb_node);
 
 	if (!found) {
@@ -280,7 +281,7 @@ static int dlpar_offline_lmb(struct drmem_lmb *lmb)
 	return dlpar_change_lmb_state(lmb, false);
 }
 
-static int pseries_remove_memblock(unsigned long base, unsigned int memblock_size)
+static int pseries_remove_memblock(unsigned long base, unsigned long memblock_size)
 {
 	unsigned long block_sz, start_pfn;
 	int sections_per_block;
@@ -311,28 +312,34 @@ out:
 
 static int pseries_remove_mem_node(struct device_node *np)
 {
-	const char *type;
-	const __be32 *regs;
+	const __be32 *prop;
 	unsigned long base;
-	unsigned int lmb_size;
+	unsigned long lmb_size;
 	int ret = -EINVAL;
+	int addr_cells, size_cells;
 
 	/*
 	 * Check to see if we are actually removing memory
 	 */
-	type = of_get_property(np, "device_type", NULL);
-	if (type == NULL || strcmp(type, "memory") != 0)
+	if (!of_node_is_type(np, "memory"))
 		return 0;
 
 	/*
 	 * Find the base address and size of the memblock
 	 */
-	regs = of_get_property(np, "reg", NULL);
-	if (!regs)
+	prop = of_get_property(np, "reg", NULL);
+	if (!prop)
 		return ret;
 
-	base = be64_to_cpu(*(unsigned long *)regs);
-	lmb_size = be32_to_cpu(regs[3]);
+	addr_cells = of_n_addr_cells(np);
+	size_cells = of_n_size_cells(np);
+
+	/*
+	 * "reg" property represents (addr,size) tuple.
+	 */
+	base = of_read_number(prop, addr_cells);
+	prop += addr_cells;
+	lmb_size = of_read_number(prop, size_cells);
 
 	pseries_remove_memblock(base, lmb_size);
 	return 0;
@@ -594,7 +601,7 @@ static int dlpar_memory_remove_by_ic(u32 lmbs_to_remove, u32 drc_index)
 
 #else
 static inline int pseries_remove_memblock(unsigned long base,
-					  unsigned int memblock_size)
+					  unsigned long memblock_size)
 {
 	return -EOPNOTSUPP;
 }
@@ -911,28 +918,33 @@ int dlpar_memory(struct pseries_hp_errorlog *hp_elog)
 
 static int pseries_add_mem_node(struct device_node *np)
 {
-	const char *type;
-	const __be32 *regs;
+	const __be32 *prop;
 	unsigned long base;
-	unsigned int lmb_size;
+	unsigned long lmb_size;
 	int ret = -EINVAL;
+	int addr_cells, size_cells;
 
 	/*
 	 * Check to see if we are actually adding memory
 	 */
-	type = of_get_property(np, "device_type", NULL);
-	if (type == NULL || strcmp(type, "memory") != 0)
+	if (!of_node_is_type(np, "memory"))
 		return 0;
 
 	/*
 	 * Find the base and size of the memblock
 	 */
-	regs = of_get_property(np, "reg", NULL);
-	if (!regs)
+	prop = of_get_property(np, "reg", NULL);
+	if (!prop)
 		return ret;
 
-	base = be64_to_cpu(*(unsigned long *)regs);
-	lmb_size = be32_to_cpu(regs[3]);
+	addr_cells = of_n_addr_cells(np);
+	size_cells = of_n_size_cells(np);
+	/*
+	 * "reg" property represents (addr,size) tuple.
+	 */
+	base = of_read_number(prop, addr_cells);
+	prop += addr_cells;
+	lmb_size = of_read_number(prop, size_cells);
 
 	/*
 	 * Update memory region to represent the memory add

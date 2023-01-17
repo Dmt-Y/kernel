@@ -436,7 +436,7 @@ static void cifs_resolve_server(struct work_struct *work)
 	mutex_unlock(&server->srv_mutex);
 }
 
-/**
+/*
  * Mark all sessions and tcons for reconnect.
  *
  * @server needs to be previously set to CifsNeedReconnect.
@@ -445,11 +445,6 @@ static void cifs_mark_tcp_ses_conns_for_reconnect(struct TCP_Server_Info *server
 {
 	struct cifs_ses *ses;
 	struct cifs_tcon *tcon;
-	struct mid_q_entry *mid, *nmid;
-	struct list_head retry_list;
-
-	server->maxBuf = 0;
-	server->max_read = 0;
 
 	cifs_dbg(FYI, "Mark tcp session as need reconnect\n");
 	trace_smb3_reconnect(server->CurrentMid, server->hostname);
@@ -468,6 +463,16 @@ static void cifs_mark_tcp_ses_conns_for_reconnect(struct TCP_Server_Info *server
 			ses->tcon_ipc->need_reconnect = true;
 	}
 	spin_unlock(&cifs_tcp_ses_lock);
+}
+
+static void
+cifs_abort_connection(struct TCP_Server_Info *server)
+{
+	struct mid_q_entry *mid, *nmid;
+	struct list_head retry_list;
+
+	server->maxBuf = 0;
+	server->max_read = 0;
 
 	/* do not want to be sending data on a socket we are freeing */
 	cifs_dbg(FYI, "%s: tearing down socket\n", __func__);
@@ -506,7 +511,7 @@ static void cifs_mark_tcp_ses_conns_for_reconnect(struct TCP_Server_Info *server
 	list_for_each_entry_safe(mid, nmid, &retry_list, qhead) {
 		list_del_init(&mid->qhead);
 		mid->callback(mid);
-		cifs_mid_q_entry_release(mid);
+		release_mid(mid);
 	}
 
 	if (cifs_rdma_enabled(server)) {
@@ -548,6 +553,8 @@ static int __cifs_reconnect(struct TCP_Server_Info *server)
 
 	cifs_mark_tcp_ses_conns_for_reconnect(server);
 
+	cifs_abort_connection(server);
+
 	do {
 		try_to_freeze();
 		mutex_lock(&server->srv_mutex);
@@ -575,8 +582,10 @@ static int __cifs_reconnect(struct TCP_Server_Info *server)
 		}
 	} while (server->tcpStatus == CifsNeedReconnect);
 
+	spin_lock(&cifs_tcp_ses_lock);
 	if (server->tcpStatus == CifsNeedNegotiate)
 		mod_delayed_work(cifsiod_wq, &server->echo, 0);
+	spin_unlock(&cifs_tcp_ses_lock);
 
 	wake_up(&server->response_q);
 	return rc;
@@ -662,6 +671,8 @@ static int reconnect_dfs_server(struct TCP_Server_Info *server)
 
 	cifs_mark_tcp_ses_conns_for_reconnect(server);
 
+	cifs_abort_connection(server);
+
 	do {
 		try_to_freeze();
 		mutex_lock(&server->srv_mutex);
@@ -686,6 +697,7 @@ static int reconnect_dfs_server(struct TCP_Server_Info *server)
 			server->tcpStatus = CifsNeedNegotiate;
 		spin_unlock(&GlobalMid_Lock);
 		mutex_unlock(&server->srv_mutex);
+		mod_delayed_work(cifsiod_wq, &server->reconnect, 0);
 	} while (server->tcpStatus == CifsNeedReconnect);
 
 	if (target_hint)
@@ -705,11 +717,18 @@ int cifs_reconnect(struct TCP_Server_Info *server)
 {
 	/* If tcp session is not an dfs connection, then reconnect to last target server */
 	spin_lock(&cifs_tcp_ses_lock);
-	if (!server->is_dfs_conn || !server->origin_fullpath || !server->leaf_fullpath) {
+	if (!server->is_dfs_conn) {
 		spin_unlock(&cifs_tcp_ses_lock);
 		return __cifs_reconnect(server);
 	}
 	spin_unlock(&cifs_tcp_ses_lock);
+
+	mutex_lock(&server->refpath_lock);
+	if (!server->origin_fullpath || !server->leaf_fullpath) {
+		mutex_unlock(&server->refpath_lock);
+		return __cifs_reconnect(server);
+	}
+	mutex_unlock(&server->refpath_lock);
 
 	return reconnect_dfs_server(server);
 }
@@ -1066,7 +1085,7 @@ static void clean_demultiplex_info(struct TCP_Server_Info *server)
 			cifs_dbg(FYI, "Callback mid %llu\n", mid_entry->mid);
 			list_del_init(&mid_entry->qhead);
 			mid_entry->callback(mid_entry);
-			cifs_mid_q_entry_release(mid_entry);
+			release_mid(mid_entry);
 		}
 		/* 1/8th of sec is more than enough time for them to exit */
 		msleep(125);
@@ -1140,19 +1159,18 @@ int
 cifs_handle_standard(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 {
 	char *buf = server->large_buf ? server->bigbuf : server->smallbuf;
-	int length;
+	int rc;
 
 	/*
 	 * We know that we received enough to get to the MID as we
 	 * checked the pdu_length earlier. Now check to see
-	 * if the rest of the header is OK. We borrow the length
-	 * var for the rest of the loop to avoid a new stack var.
+	 * if the rest of the header is OK.
 	 *
 	 * 48 bytes is enough to display the header and a little bit
 	 * into the payload for debugging purposes.
 	 */
-	length = server->ops->check_message(buf, server->total_read, server);
-	if (length != 0)
+	rc = server->ops->check_message(buf, server->total_read, server);
+	if (rc)
 		cifs_dump_mem("Bad SMB: ", buf,
 			min_t(unsigned int, server->total_read, 48));
 
@@ -1167,9 +1185,9 @@ cifs_handle_standard(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 		return -1;
 
 	if (!mid)
-		return length;
+		return rc;
 
-	handle_mid(mid, server, buf, length);
+	handle_mid(mid, server, buf, rc);
 	return 0;
 }
 
@@ -1191,7 +1209,7 @@ smb2_add_credits_from_hdr(char *buffer, struct TCP_Server_Info *server)
 		spin_unlock(&server->req_lock);
 		wake_up(&server->request_q);
 
-		trace_smb3_add_credits(server->CurrentMid,
+		trace_smb3_hdr_credits(server->CurrentMid,
 				server->hostname, scredits,
 				le16_to_cpu(shdr->CreditRequest));
 		cifs_server_dbg(FYI, "%s: added %u credits total=%d\n",
@@ -1304,7 +1322,7 @@ next_pdu:
 		if (length < 0) {
 			for (i = 0; i < num_mids; i++)
 				if (mids[i])
-					cifs_mid_q_entry_release(mids[i]);
+					release_mid(mids[i]);
 			continue;
 		}
 
@@ -1331,7 +1349,7 @@ next_pdu:
 				if (!mids[i]->multiRsp || mids[i]->multiEnd)
 					mids[i]->callback(mids[i]);
 
-				cifs_mid_q_entry_release(mids[i]);
+				release_mid(mids[i]);
 			} else if (server->ops->is_oplock_break &&
 				   server->ops->is_oplock_break(bufs[i],
 								server)) {
@@ -1340,7 +1358,7 @@ next_pdu:
 			} else {
 				cifs_server_dbg(VFS, "No task to wake, unknown frame "
 					 "received! NumMids %d\n",
-					 atomic_read(&midCount));
+					 atomic_read(&mid_count));
 				cifs_dump_mem("Received Data is: ", bufs[i],
 					      HEADER_SIZE(server));
 				smb2_add_credits_from_hdr(bufs[i], server);
@@ -1610,6 +1628,42 @@ cifs_parse_smb_version(char *value, struct smb_vol *vol, bool is_smb3)
 }
 
 /*
+ * Remove duplicate path delimiters. Windows is supposed to do that
+ * but there are some bugs that prevent rename from working if there are
+ * multiple delimiters.
+ *
+ * Returns a sanitized duplicate of @path. The caller is responsible for
+ * cleaning up the original.
+ */
+#define IS_DELIM(c) ((c) == '/' || (c) == '\\')
+static char *sanitize_path(char *path)
+{
+	char *cursor1 = path, *cursor2 = path;
+
+	/* skip all prepended delimiters */
+	while (IS_DELIM(*cursor1))
+		cursor1++;
+
+	/* copy the first letter */
+	*cursor2 = *cursor1;
+
+	/* copy the remainder... */
+	while (*(cursor1++)) {
+		/* ... skipping all duplicated delimiters */
+		if (IS_DELIM(*cursor1) && IS_DELIM(*cursor2))
+			continue;
+		*(++cursor2) = *cursor1;
+	}
+
+	/* if the last character is a delimiter, skip it */
+	if (IS_DELIM(*(cursor2 - 1)))
+		cursor2--;
+
+	*(cursor2) = '\0';
+	return kstrdup(path, GFP_KERNEL);
+}
+
+/*
  * Parse a devname into substrings and populate the vol->UNC and vol->prepath
  * fields with the result. Returns 0 on success and an error otherwise.
  */
@@ -1658,10 +1712,10 @@ cifs_parse_devname(const char *devname, struct smb_vol *vol)
 		pos++;
 
 	/* If pos is NULL then no prepath */
-	if (!*pos)
+	if (!*pos || !pos)
 		return 0;
 
-	vol->prepath = kstrdup(pos, GFP_KERNEL);
+	vol->prepath = sanitize_path(pos);
 	if (!vol->prepath)
 		return -ENOMEM;
 
@@ -3138,7 +3192,6 @@ void cifs_put_smb_ses(struct cifs_ses *ses)
 {
 	unsigned int rc, xid;
 	struct TCP_Server_Info *server = ses->server;
-	cifs_dbg(FYI, "%s: ses_count=%d\n", __func__, ses->ses_count);
 
 	spin_lock(&cifs_tcp_ses_lock);
 	if (ses->status == CifsExiting) {
@@ -4956,9 +5009,11 @@ static void setup_server_referral_paths(struct mount_ctx *mnt_ctx)
 {
 	struct TCP_Server_Info *server = mnt_ctx->server;
 
+	mutex_lock(&server->refpath_lock);
 	server->origin_fullpath = mnt_ctx->origin_fullpath;
 	server->leaf_fullpath = mnt_ctx->leaf_fullpath;
 	server->current_fullpath = mnt_ctx->leaf_fullpath;
+	mutex_unlock(&server->refpath_lock);
 	mnt_ctx->origin_fullpath = mnt_ctx->leaf_fullpath = NULL;
 }
 
@@ -5181,7 +5236,7 @@ CIFSTCon(const unsigned int xid, struct cifs_ses *ses,
 		}
 		bcc_ptr += length + 1;
 		bytes_left -= (length + 1);
-		strlcpy(tcon->treeName, tree, sizeof(tcon->treeName));
+		strscpy(tcon->treeName, tree, sizeof(tcon->treeName));
 
 		/* mostly informational -- no need to fail on error here */
 		kfree(tcon->nativeFileSystem);

@@ -447,6 +447,7 @@ static void __init setup_lowcore_dat_off(void)
 	mem_assign_absolute(S390_lowcore.restart_data, lc->restart_data);
 	mem_assign_absolute(S390_lowcore.restart_source, lc->restart_source);
 	mem_assign_absolute(S390_lowcore.restart_psw, lc->restart_psw);
+	mem_assign_absolute(S390_lowcore.mcesad, lc->mcesad);
 
 #ifdef CONFIG_SMP
 	lc->spinlock_lockval = arch_spin_lockval(0);

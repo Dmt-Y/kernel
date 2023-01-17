@@ -9,10 +9,12 @@
 #include <linux/linkage.h>
 #include <asm/page_types.h>
 #include <asm/kexec.h>
+#include <asm/nospec-branch.h>
 #include <asm/processor-flags.h>
 
 /*
- * Must be relocatable PIC code callable as a C function
+ * Must be relocatable PIC code callable as a C function, in particular
+ * there must be a plain RET and not jump to return thunk.
  */
 
 #define PTR(x) (x << 2)
@@ -95,6 +97,7 @@ relocate_kernel:
 	addl    $(identity_mapped - relocate_kernel), %eax
 	pushl   %eax
 	ret
+	int3
 
 identity_mapped:
 	/* set return address to 0 if not preserving context */
@@ -162,11 +165,13 @@ identity_mapped:
 	xorl    %esi, %esi
 	xorl    %ebp, %ebp
 	ret
+	int3
 1:
 	popl	%edx
 	movl	CP_PA_SWAP_PAGE(%edi), %esp
 	addl	$PAGE_SIZE, %esp
 2:
+	ANNOTATE_RETPOLINE_SAFE
 	call	*%edx
 
 	/* get the re-entry point of the peer system */
@@ -192,7 +197,7 @@ identity_mapped:
 	movl	%edi, %eax
 	addl	$(virtual_mapped - relocate_kernel), %eax
 	pushl	%eax
-	ret
+	RET
 
 virtual_mapped:
 	movl	CR4(%edi), %eax
@@ -210,6 +215,7 @@ virtual_mapped:
 	popl	%esi
 	popl	%ebx
 	ret
+	int3
 
 	/* Do the copies */
 swap_pages:
@@ -272,6 +278,7 @@ swap_pages:
 	popl	%ebx
 	popl	%ebp
 	ret
+	int3
 
 	.globl kexec_control_code_size
 .set kexec_control_code_size, . - relocate_kernel

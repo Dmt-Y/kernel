@@ -95,7 +95,7 @@ static void watch_target(struct xenbus_watch *watch,
 		else
 			static_max = balloon_stats.current_pages;
 
-		target_diff = xen_pv_domain() ? 0
+		target_diff = (xen_pv_domain() || xen_initial_domain()) ? 0
 				: static_max - balloon_stats.target_pages;
 	}
 

@@ -1522,8 +1522,10 @@ static int nfs_finish_open(struct nfs_open_context *ctx,
 	err = finish_open(file, dentry, do_open, opened);
 	if (err)
 		goto out;
-	nfs_file_set_open_context(file, ctx);
-
+	if (S_ISREG(file->f_path.dentry->d_inode->i_mode))
+		nfs_file_set_open_context(file, ctx);
+	else
+		err = -EOPENSTALE;
 out:
 	return err;
 }
@@ -1639,14 +1641,14 @@ no_open:
 	if (!res) {
 		inode = d_inode(dentry);
 		if ((lookup_flags & LOOKUP_DIRECTORY) && inode &&
-		    !S_ISDIR(inode->i_mode))
+		    !(S_ISDIR(inode->i_mode) || S_ISLNK(inode->i_mode)))
 			res = ERR_PTR(-ENOTDIR);
 		else if (inode && S_ISREG(inode->i_mode))
 			res = ERR_PTR(-EOPENSTALE);
 	} else if (!IS_ERR(res)) {
 		inode = d_inode(res);
 		if ((lookup_flags & LOOKUP_DIRECTORY) && inode &&
-		    !S_ISDIR(inode->i_mode)) {
+		    !(S_ISDIR(inode->i_mode) || S_ISLNK(inode->i_mode))) {
 			dput(res);
 			res = ERR_PTR(-ENOTDIR);
 		} else if (inode && S_ISREG(inode->i_mode)) {

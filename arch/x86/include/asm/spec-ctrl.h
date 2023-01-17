@@ -27,6 +27,17 @@ static inline
 void x86_spec_ctrl_set_guest(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl)
 {
 	x86_virt_spec_ctrl(guest_spec_ctrl, guest_virt_spec_ctrl, true);
+
+	if (static_cpu_has(X86_FEATURE_MSR_SPEC_CTRL)) {
+		u64 guestval = guest_spec_ctrl, hostval = spec_ctrl_current();
+		if (hostval != guestval) {
+			u32 low = (u32)guest_spec_ctrl, high = (u32)(guest_spec_ctrl >> 32);
+
+			asm volatile("wrmsr\n" :
+				     : "c" (MSR_IA32_SPEC_CTRL), "a"(low), "d"(high)
+				     : "memory");
+		}
+	}
 }
 
 /**
@@ -40,6 +51,15 @@ void x86_spec_ctrl_set_guest(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl)
 static inline
 void x86_spec_ctrl_restore_host(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl)
 {
+	if (static_cpu_has(X86_FEATURE_MSR_SPEC_CTRL)) {
+		u64 hostval = spec_ctrl_current();
+		u32 low = (u32)hostval, high = (u32)(hostval >> 32);
+
+		asm volatile("wrmsr\n" :
+			     : "c" (MSR_IA32_SPEC_CTRL), "a"(low), "d"(high)
+			     : "memory");
+	}
+
 	x86_virt_spec_ctrl(guest_spec_ctrl, guest_virt_spec_ctrl, false);
 }
 

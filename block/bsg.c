@@ -400,10 +400,6 @@ static long bsg_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case SG_GET_RESERVED_SIZE:
 	case SG_SET_RESERVED_SIZE:
 	case SG_EMULATED_HOST:
-	case SCSI_IOCTL_SEND_COMMAND: {
-		void __user *uarg = (void __user *) arg;
-		return scsi_cmd_ioctl(bd->queue, NULL, file->f_mode, cmd, uarg);
-	}
 	case SG_IO: {
 		struct request *rq;
 		struct bio *bio, *bidi_bio = NULL;
@@ -430,6 +426,10 @@ static long bsg_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		return ret;
 	}
+	case SCSI_IOCTL_SEND_COMMAND:
+		pr_warn_ratelimited("%s: calling unsupported SCSI_IOCTL_SEND_COMMAND\n",
+				    current->comm);
+		return -EINVAL;
 	default:
 		return -ENOTTY;
 	}

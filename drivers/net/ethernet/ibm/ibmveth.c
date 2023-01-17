@@ -680,8 +680,7 @@ static int ibmveth_close(struct net_device *netdev)
 
 	napi_disable(&adapter->napi);
 
-	if (!adapter->pool_config)
-		netif_stop_queue(netdev);
+	netif_stop_queue(netdev);
 
 	h_vio_signal(adapter->vdev->unit_address, VIO_IRQ_DISABLE);
 
@@ -791,9 +790,7 @@ static int ibmveth_set_csum_offload(struct net_device *dev, u32 data)
 
 	if (netif_running(dev)) {
 		restart = 1;
-		adapter->pool_config = 1;
 		ibmveth_close(dev);
-		adapter->pool_config = 0;
 	}
 
 	set_attr = 0;
@@ -875,9 +872,7 @@ static int ibmveth_set_tso(struct net_device *dev, u32 data)
 
 	if (netif_running(dev)) {
 		restart = 1;
-		adapter->pool_config = 1;
 		ibmveth_close(dev);
-		adapter->pool_config = 0;
 	}
 
 	set_attr = 0;
@@ -1534,9 +1529,7 @@ static int ibmveth_change_mtu(struct net_device *dev, int new_mtu)
 	   only the buffer pools necessary to hold the new MTU */
 	if (netif_running(adapter->netdev)) {
 		need_restart = 1;
-		adapter->pool_config = 1;
 		ibmveth_close(adapter->netdev);
-		adapter->pool_config = 0;
 	}
 
 	/* Look for an active buffer pool that can hold the new MTU */
@@ -1699,7 +1692,6 @@ static int ibmveth_probe(struct vio_dev *dev, const struct vio_device_id *id)
 	adapter->vdev = dev;
 	adapter->netdev = netdev;
 	adapter->mcastFilterSize = be32_to_cpu(*mcastFilterSize_p);
-	adapter->pool_config = 0;
 	ibmveth_init_link_settings(netdev);
 
 	netif_napi_add(netdev, &adapter->napi, ibmveth_poll, 16);
@@ -1831,9 +1823,7 @@ static ssize_t veth_pool_store(struct kobject *kobj, struct attribute *attr,
 					return -ENOMEM;
 				}
 				pool->active = 1;
-				adapter->pool_config = 1;
 				ibmveth_close(netdev);
-				adapter->pool_config = 0;
 				if ((rc = ibmveth_open(netdev)))
 					return rc;
 			} else {
@@ -1859,10 +1849,8 @@ static ssize_t veth_pool_store(struct kobject *kobj, struct attribute *attr,
 			}
 
 			if (netif_running(netdev)) {
-				adapter->pool_config = 1;
 				ibmveth_close(netdev);
 				pool->active = 0;
-				adapter->pool_config = 0;
 				if ((rc = ibmveth_open(netdev)))
 					return rc;
 			}
@@ -1873,9 +1861,7 @@ static ssize_t veth_pool_store(struct kobject *kobj, struct attribute *attr,
 			return -EINVAL;
 		} else {
 			if (netif_running(netdev)) {
-				adapter->pool_config = 1;
 				ibmveth_close(netdev);
-				adapter->pool_config = 0;
 				pool->size = value;
 				if ((rc = ibmveth_open(netdev)))
 					return rc;
@@ -1888,9 +1874,7 @@ static ssize_t veth_pool_store(struct kobject *kobj, struct attribute *attr,
 			return -EINVAL;
 		} else {
 			if (netif_running(netdev)) {
-				adapter->pool_config = 1;
 				ibmveth_close(netdev);
-				adapter->pool_config = 0;
 				pool->buff_size = value;
 				if ((rc = ibmveth_open(netdev)))
 					return rc;

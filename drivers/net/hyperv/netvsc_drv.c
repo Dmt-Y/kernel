@@ -48,9 +48,6 @@
 #include "hyperv_net.h"
 
 #define RING_SIZE_MIN	64
-#define RETRY_US_LO	5000
-#define RETRY_US_HI	10000
-#define RETRY_MAX	2000	/* >10 sec */
 
 #define LINKCHANGE_INT (2 * HZ)
 #define VF_TAKEOVER_INT (HZ / 10)
@@ -551,7 +548,8 @@ static int netvsc_xmit(struct sk_buff *skb, struct net_device *net, bool xdp_tx)
 	 */
 	vf_netdev = rcu_dereference_bh(net_device_ctx->vf_netdev);
 	if (vf_netdev && netif_running(vf_netdev) &&
-	    netif_carrier_ok(vf_netdev) && !netpoll_tx_running(net))
+	    netif_carrier_ok(vf_netdev) && !netpoll_tx_running(net) &&
+	    net_device_ctx->data_path_is_vf)
 		return netvsc_vf_xmit(net, vf_netdev, skb);
 
 	/* We will atmost need two pages to describe the rndis
@@ -740,6 +738,13 @@ void netvsc_linkstatus_callback(struct net_device *net,
 	struct net_device_context *ndev_ctx = netdev_priv(net);
 	struct netvsc_reconfig *event;
 	unsigned long flags;
+
+	/* Ensure the packet is big enough to access its fields */
+	if (resp->msg_len - RNDIS_HEADER_SIZE < sizeof(struct rndis_indicate_status)) {
+		netdev_err(net, "invalid rndis_indicate_status packet, len: %u\n",
+			   resp->msg_len);
+		return;
+	}
 
 	/* Update the physical link speed when changing to another vSwitch */
 	if (indicate->status == RNDIS_STATUS_LINK_SPEED_CHANGE) {
@@ -1555,6 +1560,9 @@ static void netvsc_get_ethtool_stats(struct net_device *dev,
 	pcpu_sum = kvmalloc_array(num_possible_cpus(),
 				  sizeof(struct netvsc_ethtool_pcpu_stats),
 				  GFP_KERNEL);
+	if (!pcpu_sum)
+		return;
+
 	netvsc_get_pcpu_stats(dev, pcpu_sum);
 	for_each_present_cpu(cpu) {
 		struct netvsc_ethtool_pcpu_stats *this_sum = &pcpu_sum[cpu];
@@ -1922,13 +1930,15 @@ static int netvsc_set_features(struct net_device *ndev,
 	netdev_features_t change = features ^ ndev->features;
 	struct net_device_context *ndevctx = netdev_priv(ndev);
 	struct netvsc_device *nvdev = rtnl_dereference(ndevctx->nvdev);
+	struct net_device *vf_netdev = rtnl_dereference(ndevctx->vf_netdev);
 	struct ndis_offload_params offloads;
+	int ret = 0;
 
 	if (!nvdev || nvdev->destroy)
 		return -ENODEV;
 
 	if (!(change & NETIF_F_LRO))
-		return 0;
+		goto syncvf;
 
 	memset(&offloads, 0, sizeof(struct ndis_offload_params));
 
@@ -1940,7 +1950,21 @@ static int netvsc_set_features(struct net_device *ndev,
 		offloads.rsc_ip_v6 = NDIS_OFFLOAD_PARAMETERS_RSC_DISABLED;
 	}
 
-	return rndis_filter_set_offload_params(ndev, nvdev, &offloads);
+	ret = rndis_filter_set_offload_params(ndev, nvdev, &offloads);
+
+	if (ret) {
+		features ^= NETIF_F_LRO;
+		ndev->features = features;
+	}
+
+syncvf:
+	if (!vf_netdev)
+		return ret;
+
+	vf_netdev->wanted_features = features;
+	netdev_update_features(vf_netdev);
+
+	return ret;
 }
 
 static u32 netvsc_get_msglevel(struct net_device *ndev)
@@ -2281,6 +2305,18 @@ static struct net_device *get_netvsc_byslot(const struct net_device *vf_netdev)
 
 	}
 
+	/* Fallback path to check synthetic vf with
+	 * help of mac addr
+	 */
+	list_for_each_entry(ndev_ctx, &netvsc_dev_list, list) {
+		ndev = hv_get_drvdata(ndev_ctx->device_ctx);
+		if (ether_addr_equal(vf_netdev->perm_addr, ndev->perm_addr)) {
+			netdev_notice(vf_netdev,
+				      "falling back to mac addr based matching\n");
+			return ndev;
+		}
+	}
+
 	netdev_notice(vf_netdev,
 		      "no netdev found for vf serial:%u\n", serial);
 	return NULL;
@@ -2331,8 +2367,12 @@ static int netvsc_register_vf(struct net_device *vf_netdev)
 
 	dev_hold(vf_netdev);
 	rcu_assign_pointer(net_device_ctx->vf_netdev, vf_netdev);
+
 	if (ndev->needed_headroom < vf_netdev->needed_headroom)
 		ndev->needed_headroom = vf_netdev->needed_headroom;
+
+	vf_netdev->wanted_features = ndev->features;
+	netdev_update_features(vf_netdev);
 
 	prog = netvsc_xdp_get(netvsc_dev);
 	netvsc_vf_setxdp(vf_netdev, prog);
@@ -2340,13 +2380,26 @@ static int netvsc_register_vf(struct net_device *vf_netdev)
 	return NOTIFY_OK;
 }
 
-/* VF up/down change detected, schedule to change data path */
-static int netvsc_vf_changed(struct net_device *vf_netdev)
+/* Change the data path when VF UP/DOWN/CHANGE are detected.
+ *
+ * Typically a UP or DOWN event is followed by a CHANGE event, so
+ * net_device_ctx->data_path_is_vf is used to cache the current data path
+ * to avoid the duplicate call of netvsc_switch_datapath() and the duplicate
+ * message.
+ *
+ * During hibernation, if a VF NIC driver (e.g. mlx5) preserves the network
+ * interface, there is only the CHANGE event and no UP or DOWN event.
+ */
+static int netvsc_vf_changed(struct net_device *vf_netdev, unsigned long event)
 {
 	struct net_device_context *net_device_ctx;
 	struct netvsc_device *netvsc_dev;
 	struct net_device *ndev;
-	bool vf_is_up = netif_running(vf_netdev);
+	bool vf_is_up = false;
+	int ret;
+
+	if (event != NETDEV_GOING_DOWN)
+		vf_is_up = netif_running(vf_netdev);
 
 	ndev = get_netvsc_byref(vf_netdev);
 	if (!ndev)
@@ -2357,9 +2410,25 @@ static int netvsc_vf_changed(struct net_device *vf_netdev)
 	if (!netvsc_dev)
 		return NOTIFY_DONE;
 
-	netvsc_switch_datapath(ndev, vf_is_up);
-	netdev_info(ndev, "Data path switched %s VF: %s\n",
-		    vf_is_up ? "to" : "from", vf_netdev->name);
+	if (net_device_ctx->data_path_is_vf == vf_is_up)
+		return NOTIFY_OK;
+
+	if (vf_is_up && !net_device_ctx->vf_alloc) {
+		netdev_info(ndev, "Waiting for the VF association from host\n");
+		wait_for_completion(&net_device_ctx->vf_add);
+	}
+
+	ret = netvsc_switch_datapath(ndev, vf_is_up);
+
+	if (ret) {
+		netdev_err(ndev,
+			   "Data path failed to switch %s VF: %s, err: %d\n",
+			   vf_is_up ? "to" : "from", vf_netdev->name, ret);
+		return NOTIFY_DONE;
+	} else {
+		netdev_info(ndev, "Data path switched %s VF: %s\n",
+			    vf_is_up ? "to" : "from", vf_netdev->name);
+	}
 
 	return NOTIFY_OK;
 }
@@ -2380,6 +2449,7 @@ static int netvsc_unregister_vf(struct net_device *vf_netdev)
 
 	netvsc_vf_setxdp(vf_netdev, NULL);
 
+	reinit_completion(&net_device_ctx->vf_add);
 	netdev_rx_handler_unregister(vf_netdev);
 	netdev_upper_dev_unlink(vf_netdev, ndev);
 	RCU_INIT_POINTER(net_device_ctx->vf_netdev, NULL);
@@ -2419,6 +2489,7 @@ static int netvsc_probe(struct hv_device *dev,
 
 	INIT_DELAYED_WORK(&net_device_ctx->dwork, netvsc_link_change);
 
+	init_completion(&net_device_ctx->vf_add);
 	spin_lock_init(&net_device_ctx->lock);
 	INIT_LIST_HEAD(&net_device_ctx->reconfig_events);
 	INIT_DELAYED_WORK(&net_device_ctx->vf_takeover, netvsc_vf_setup);
@@ -2603,8 +2674,7 @@ static int netvsc_netdev_event(struct notifier_block *this,
 		return NOTIFY_DONE;
 
 	/* Avoid Bonding master dev with same MAC registering as VF */
-	if ((event_dev->priv_flags & IFF_BONDING) &&
-	    (event_dev->flags & IFF_MASTER))
+	if (netif_is_bond_master(event_dev))
 		return NOTIFY_DONE;
 
 	switch (event) {
@@ -2614,7 +2684,8 @@ static int netvsc_netdev_event(struct notifier_block *this,
 		return netvsc_unregister_vf(event_dev);
 	case NETDEV_UP:
 	case NETDEV_DOWN:
-		return netvsc_vf_changed(event_dev);
+	case NETDEV_GOING_DOWN:
+		return netvsc_vf_changed(event_dev, event);
 	default:
 		return NOTIFY_DONE;
 	}

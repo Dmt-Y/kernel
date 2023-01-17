@@ -3157,6 +3157,7 @@ static int fec_enet_init(struct net_device *ndev)
 	unsigned dsize = fep->bufdesc_ex ? sizeof(struct bufdesc_ex) :
 			sizeof(struct bufdesc);
 	unsigned dsize_log2 = __fls(dsize);
+	int ret;
 
 	WARN_ON(dsize != (1 << dsize_log2));
 #if defined(CONFIG_ARM) || defined(CONFIG_ARM64)
@@ -3167,7 +3168,16 @@ static int fec_enet_init(struct net_device *ndev)
 	fep->tx_align = 0x3;
 #endif
 
-	fec_enet_alloc_queue(ndev);
+	/* Check mask of the streaming and coherent API */
+	ret = dma_set_mask_and_coherent(&fep->pdev->dev, DMA_BIT_MASK(32));
+	if (ret < 0) {
+		dev_warn(&fep->pdev->dev, "No suitable DMA available\n");
+		return ret;
+	}
+
+	ret = fec_enet_alloc_queue(ndev);
+	if (ret)
+		return ret;
 
 	bd_size = (fep->total_tx_ring_size + fep->total_rx_ring_size) * dsize;
 
@@ -3175,7 +3185,8 @@ static int fec_enet_init(struct net_device *ndev)
 	cbd_base = dmam_alloc_coherent(&fep->pdev->dev, bd_size, &bd_dma,
 				       GFP_KERNEL);
 	if (!cbd_base) {
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto free_queue_mem;
 	}
 
 	memset(cbd_base, 0, bd_size);
@@ -3252,6 +3263,10 @@ static int fec_enet_init(struct net_device *ndev)
 	fec_enet_update_ethtool_stats(ndev);
 
 	return 0;
+
+free_queue_mem:
+	fec_enet_free_queue(ndev);
+	return ret;
 }
 
 #ifdef CONFIG_OF

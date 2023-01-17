@@ -350,7 +350,7 @@ static void pnfs_recall_all_layouts(struct nfs_client *clp)
 __be32 nfs4_callback_devicenotify(struct cb_devicenotifyargs *args,
 				  void *dummy, struct cb_process_state *cps)
 {
-	int i;
+	uint32_t i;
 	const struct pnfs_layoutdriver_type *ld = NULL;
 	__be32 res = 0;
 

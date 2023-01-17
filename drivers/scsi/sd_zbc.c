@@ -669,7 +669,7 @@ err:
 
 int sd_zbc_read_zones(struct scsi_disk *sdkp, unsigned char *buf)
 {
-	u32 zone_blocks;
+	u32 zone_blocks = 0;
 	int ret;
 
 	if (!sd_is_zoned(sdkp))

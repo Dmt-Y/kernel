@@ -527,6 +527,8 @@ EXPORT_SYMBOL_GPL(nvmem_register);
  */
 int nvmem_unregister(struct nvmem_device *nvmem)
 {
+	if (!nvmem)
+		return 0;
 	mutex_lock(&nvmem_mutex);
 	if (nvmem->users) {
 		mutex_unlock(&nvmem_mutex);

@@ -793,7 +793,7 @@ static __always_inline bool pv_vcpu_is_preempted(long cpu)
 	    "call " #func ";"						\
 	    PV_RESTORE_ALL_CALLER_REGS					\
 	    FRAME_END							\
-	    "ret;"							\
+	    ASM_RET							\
 	    ".popsection")
 
 /* Get a reference to a callee-save function */

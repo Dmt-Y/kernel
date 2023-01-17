@@ -264,12 +264,32 @@ static void mlx5e_detach_mod_hdr(struct mlx5e_priv *priv,
 static
 struct mlx5_core_dev *mlx5e_hairpin_get_mdev(struct net *net, int ifindex)
 {
+	struct mlx5_core_dev *mdev;
 	struct net_device *netdev;
 	struct mlx5e_priv *priv;
 
-	netdev = __dev_get_by_index(net, ifindex);
+	netdev = dev_get_by_index(net, ifindex);
+	if (!netdev)
+		return ERR_PTR(-ENODEV);
+
 	priv = netdev_priv(netdev);
-	return priv->mdev;
+	mdev = priv->mdev;
+	dev_put(netdev);
+
+	/* Mirred tc action holds a refcount on the ifindex net_device (see
+	 * net/sched/act_mirred.c:tcf_mirred_get_dev). So, it's okay to continue using mdev
+	 * after dev_put(netdev), while we're in the context of adding a tc flow.
+	 *
+	 * The mdev pointer corresponds to the peer/out net_device of a hairpin. It is then
+	 * stored in a hairpin object, which exists until all flows, that refer to it, get
+	 * removed.
+	 *
+	 * On the other hand, after a hairpin object has been created, the peer net_device may
+	 * be removed/unbound while there are still some hairpin flows that are using it. This
+	 * case is handled by mlx5e_tc_hairpin_update_dead_peer, which is hooked to
+	 * NETDEV_UNREGISTER event of the peer net_device.
+	 */
+	return mdev;
 }
 
 static int mlx5e_hairpin_create_transport(struct mlx5e_hairpin *hp)
@@ -466,6 +486,10 @@ mlx5e_hairpin_create(struct mlx5e_priv *priv, struct mlx5_hairpin_params *params
 
 	func_mdev = priv->mdev;
 	peer_mdev = mlx5e_hairpin_get_mdev(dev_net(priv->netdev), peer_ifindex);
+	if (IS_ERR(peer_mdev)) {
+		err = PTR_ERR(peer_mdev);
+		goto create_pair_err;
+	}
 
 	pair = mlx5_core_hairpin_create(func_mdev, peer_mdev, params);
 	if (IS_ERR(pair)) {
@@ -582,6 +606,11 @@ static int mlx5e_hairpin_flow_add(struct mlx5e_priv *priv,
 	int err;
 
 	peer_mdev = mlx5e_hairpin_get_mdev(dev_net(priv->netdev), peer_ifindex);
+	if (IS_ERR(peer_mdev)) {
+		NL_SET_ERR_MSG_MOD(extack, "invalid ifindex of mirred device");
+		return PTR_ERR(peer_mdev);
+	}
+
 	if (!MLX5_CAP_GEN(priv->mdev, hairpin) || !MLX5_CAP_GEN(peer_mdev, hairpin)) {
 		NL_SET_ERR_MSG_MOD(extack, "hairpin is not supported");
 		return -EOPNOTSUPP;
@@ -1963,10 +1992,11 @@ static int offload_pedit_fields(struct pedit_headers *masks,
 		field_bsize = f->size * BITS_PER_BYTE;
 
 		if (field_bsize == 32) {
-			mask_be32 = *(__be32 *)&mask;
+			mask_be32 = (__be32)mask;
 			mask = (__force unsigned long)cpu_to_le32(be32_to_cpu(mask_be32));
 		} else if (field_bsize == 16) {
-			mask_be16 = *(__be16 *)&mask;
+			mask_be32 = (__be32)mask;
+			mask_be16 = *(__be16 *)&mask_be32;
 			mask = (__force unsigned long)cpu_to_le16(be16_to_cpu(mask_be16));
 		}
 
@@ -2134,6 +2164,7 @@ static bool csum_offload_supported(struct mlx5e_priv *priv,
 
 static bool modify_header_match_supported(struct mlx5_flow_spec *spec,
 					  struct tcf_exts *exts,
+					  u32 actions,
 					  struct netlink_ext_ack *extack)
 {
 	const struct tc_action *a;
@@ -2143,7 +2174,11 @@ static bool modify_header_match_supported(struct mlx5_flow_spec *spec,
 	u16 ethertype;
 	int nkeys, i;
 
-	headers_v = MLX5_ADDR_OF(fte_match_param, spec->match_value, outer_headers);
+	if (actions & MLX5_FLOW_CONTEXT_ACTION_DECAP)
+		headers_v = MLX5_ADDR_OF(fte_match_param, spec->match_value, inner_headers);
+	else
+		headers_v = MLX5_ADDR_OF(fte_match_param, spec->match_value, outer_headers);
+
 	ethertype = MLX5_GET(fte_match_set_lyr_2_4, headers_v, ethertype);
 
 	/* for non-IP we only re-write MACs, so we're okay */
@@ -2200,7 +2235,7 @@ static bool actions_match_supported(struct mlx5e_priv *priv,
 
 	if (actions & MLX5_FLOW_CONTEXT_ACTION_MOD_HDR)
 		return modify_header_match_supported(&parse_attr->spec, exts,
-						     extack);
+						     actions, extack);
 
 	return true;
 }

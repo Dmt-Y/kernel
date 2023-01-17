@@ -593,8 +593,7 @@ struct btrfs_fs_info {
 	struct rb_root block_group_cache_tree;
 
 	/* keep track of unallocated space */
-	spinlock_t free_chunk_lock;
-	u64 free_chunk_space;
+	atomic64_t free_chunk_space;
 
 	struct extent_io_tree freed_extents[2];
 	struct extent_io_tree *pinned_extents;
@@ -939,6 +938,7 @@ struct btrfs_fs_info {
 	/* Used to reclaim the metadata space in the background. */
 	struct work_struct async_reclaim_work;
 	struct work_struct async_data_reclaim_work;
+	struct work_struct preempt_reclaim_work;
 
 	spinlock_t unused_bgs_lock;
 	struct list_head unused_bgs;
@@ -2622,10 +2622,11 @@ enum btrfs_flush_state {
 	FLUSH_DELAYED_REFS	=	4,
 	FLUSH_DELALLOC		=	5,
 	FLUSH_DELALLOC_WAIT	=	6,
-	ALLOC_CHUNK		=	7,
-	ALLOC_CHUNK_FORCE	=	8,
-	RUN_DELAYED_IPUTS	=	9,
-	COMMIT_TRANS		=	10,
+	FLUSH_DELALLOC_FULL	=	7,
+	ALLOC_CHUNK		=	8,
+	ALLOC_CHUNK_FORCE	=	9,
+	RUN_DELAYED_IPUTS	=	10,
+	COMMIT_TRANS		=	11,
 };
 
 void btrfs_trans_release_metadata(struct btrfs_trans_handle *trans,

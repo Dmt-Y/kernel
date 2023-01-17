@@ -162,6 +162,8 @@ struct fb_cursor_user {
 #define FB_EARLY_EVENT_BLANK		0x10
 /*      A hardware display blank revert early change occured */
 #define FB_R_EARLY_EVENT_BLANK		0x11
+/* pre-check for mode change (used only by fbcon) */
+#define FB_EVENT_MODE_CHANGE_CHECK	0x12
 
 struct fb_event {
 	struct fb_info *info;

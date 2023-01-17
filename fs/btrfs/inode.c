@@ -1219,16 +1219,14 @@ static noinline void async_cow_submit(struct btrfs_work *work)
 	nr_pages = (async_cow->end - async_cow->start + PAGE_SIZE) >>
 		PAGE_SHIFT;
 
-	/*
-	 * atomic_sub_return implies a barrier for waitqueue_active
-	 */
+	if (async_cow->inode)
+		submit_compressed_extents(async_cow->inode, async_cow);
+
+	/* atomic_sub_return implies a barrier for waitqueue_active */
 	if (atomic_sub_return(nr_pages, &fs_info->async_delalloc_pages) <
 	    5 * SZ_1M &&
 	    waitqueue_active(&fs_info->async_submit_wait))
 		wake_up(&fs_info->async_submit_wait);
-
-	if (async_cow->inode)
-		submit_compressed_extents(async_cow->inode, async_cow);
 }
 
 static noinline void async_cow_free(struct btrfs_work *work)
@@ -10236,11 +10234,7 @@ static int start_delalloc_inodes(struct btrfs_root *root,
 			btrfs_queue_work(root->fs_info->flush_workers,
 					 &work->work);
 		} else {
-			ret = sync_inode(inode, wbc);
-			if (!ret &&
-			    test_bit(BTRFS_INODE_HAS_ASYNC_EXTENT,
-				     &BTRFS_I(inode)->runtime_flags))
-				ret = sync_inode(inode, wbc);
+			ret = filemap_fdatawrite_wbc(inode->i_mapping, wbc);
 			btrfs_add_delayed_iput(inode);
 			if (ret || wbc->nr_to_write <= 0)
 				goto out;

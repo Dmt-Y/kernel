@@ -4,11 +4,13 @@
 #define __NOSPEC_BRANCH_H__
 
 #include <linux/static_key.h>
+#include <linux/frame.h>
 
 #include <asm/alternative.h>
 #include <asm/alternative-asm.h>
 #include <asm/cpufeatures.h>
 #include <asm/msr-index.h>
+#include <asm/unwind_hints.h>
 
 /*
  * Fill the CPU return stack buffer.
@@ -38,21 +40,25 @@
 #define __FILL_RETURN_BUFFER(reg, nr, sp)	\
 	mov	$(nr/2), reg;			\
 771:						\
+	ANNOTATE_INTRA_FUNCTION_CALL		\
 	call	772f;				\
 773:	/* speculation trap */			\
 	pause;					\
 	lfence;					\
 	jmp	773b;				\
 772:						\
+	ANNOTATE_INTRA_FUNCTION_CALL		\
 	call	774f;				\
 775:	/* speculation trap */			\
 	pause;					\
 	lfence;					\
 	jmp	775b;				\
 774:						\
+	add	$(BITS_PER_LONG/8) * 2, sp;	\
 	dec	reg;				\
 	jnz	771b;				\
-	add	$(BITS_PER_LONG/8) * nr, sp;
+	/* barrier for jnz misprediction */	\
+	lfence;
 
 #ifdef __ASSEMBLY__
 
@@ -119,7 +125,7 @@
 	ANNOTATE_NOSPEC_ALTERNATIVE
 	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; jmp *\reg),	\
 		__stringify(RETPOLINE_JMP \reg), X86_FEATURE_RETPOLINE,	\
-		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *\reg), X86_FEATURE_RETPOLINE_LFENCE
+		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *\reg; int3), X86_FEATURE_RETPOLINE_LFENCE
 #else
 	jmp	*\reg
 #endif
@@ -136,17 +142,49 @@
 #endif
 .endm
 
+.macro ISSUE_UNBALANCED_RET_GUARD
+	ANNOTATE_INTRA_FUNCTION_CALL
+	call .Lunbalanced_ret_guard_\@
+	int3
+.Lunbalanced_ret_guard_\@:
+	add $(BITS_PER_LONG/8), %_ASM_SP
+	lfence
+.endm
+
  /*
   * A simpler FILL_RETURN_BUFFER macro. Don't make people use the CPP
   * monstrosity above, manually.
   */
-.macro FILL_RETURN_BUFFER reg:req nr:req ftr:req
 #ifdef CONFIG_RETPOLINE
-	ANNOTATE_NOSPEC_ALTERNATIVE
-	ALTERNATIVE "jmp .Lskip_rsb_\@",				\
-		__stringify(__FILL_RETURN_BUFFER(\reg,\nr,%_ASM_SP))	\
-		\ftr
+.macro FILL_RETURN_BUFFER reg:req nr:req ftr:req ftr2
+.ifb \ftr2
+	ALTERNATIVE "jmp .Lskip_rsb_\@", "", \ftr
+.else
+	ALTERNATIVE_2 "jmp .Lskip_rsb_\@", "", \ftr, "jmp .Lunbalanced_\@", \ftr2
+.endif
+	__FILL_RETURN_BUFFER(\reg,\nr,%_ASM_SP)
+.Lunbalanced_\@:
+	ISSUE_UNBALANCED_RET_GUARD
 .Lskip_rsb_\@:
+#endif
+.endm
+
+/*
+ * Mitigate RETBleed for AMD/Hygon Zen uarch. Requires KERNEL CR3 because the
+ * return thunk isn't mapped into the userspace tables (then again, AMD
+ * typically has NO_MELTDOWN).
+ *
+ * While zen_untrain_ret() doesn't clobber anything but requires stack,
+ * entry_ibpb() will clobber AX, CX, DX.
+ *
+ * As such, this must be placed after every *SWITCH_TO_KERNEL_CR3 at a point
+ * where we have a stack but before any RET instruction.
+ */
+.macro UNTRAIN_RET
+#ifdef CONFIG_RETPOLINE
+	ALTERNATIVE_2 "",						\
+	              "call zen_untrain_ret", X86_FEATURE_UNRET,	\
+		      "call entry_ibpb", X86_FEATURE_ENTRY_IBPB
 #endif
 .endm
 
@@ -166,6 +204,10 @@
 
 #ifdef CONFIG_RETPOLINE
 #ifdef CONFIG_X86_64
+
+extern void __x86_return_thunk(void);
+extern void zen_untrain_ret(void);
+extern void entry_ibpb(void);
 
 /*
  * Inline asm uses the %V modifier which is only in newer GCC
@@ -225,10 +267,10 @@ enum spectre_v2_mitigation {
 	SPECTRE_V2_NONE,
 	SPECTRE_V2_RETPOLINE,
 	SPECTRE_V2_LFENCE,
-	SPECTRE_V2_IBRS,
 	SPECTRE_V2_EIBRS,
 	SPECTRE_V2_EIBRS_RETPOLINE,
 	SPECTRE_V2_EIBRS_LFENCE,
+	SPECTRE_V2_IBRS,
 };
 
 /* The indirect branch speculation control variants */
@@ -258,15 +300,28 @@ extern char __indirect_thunk_end[];
  */
 static inline void vmexit_fill_RSB(void)
 {
+#ifdef CONFIG_RETPOLINE
 	unsigned long loops;
 
-	asm volatile (ANNOTATE_NOSPEC_ALTERNATIVE
-		      ALTERNATIVE("jmp 910f",
-				  __stringify(__FILL_RETURN_BUFFER(%0, RSB_CLEAR_LOOPS, %1)),
-				  X86_FEATURE_RETPOLINE)
-		      "910:"
+	asm volatile(ANNOTATE_NOSPEC_ALTERNATIVE
+		     ALTERNATIVE_2("jmp .Lskip_rsb",
+				   "", X86_FEATURE_RSB_VMEXIT,
+				   "jmp .Lunbalanced", X86_FEATURE_RSB_VMEXIT_LITE)
+				   __stringify(__FILL_RETURN_BUFFER(%0,RSB_CLEAR_LOOPS,%1))
+				   ".Lunbalanced:\n\t"
+				   "999: \n\t"
+				   ".pushsection .discard.intra_function_calls\n\t"
+				   ".long 999b\n\t"
+				   ".popsection\n\t"
+				   "call .Lunbalanced_ret_guard\n\t"
+				   "int3\n\t"
+				   ".Lunbalanced_ret_guard:\n\t"
+				   __stringify(add $(BITS_PER_LONG/8))", %1\n\t"
+				   "lfence\n\t"
+				   ".Lskip_rsb:\n\t"
 		      : "=r" (loops), ASM_CALL_CONSTRAINT
-		      : : "memory" );
+		      : : "memory");
+#endif
 }
 
 static __always_inline
@@ -287,44 +342,10 @@ static inline void indirect_branch_prediction_barrier(void)
 	alternative_msr_write(MSR_IA32_PRED_CMD, val, X86_FEATURE_USE_IBPB);
 }
 
-/*
- * This also performs a barrier, and setting it again when it was already
- * set is NOT a no-op.
- */
-static inline void restrict_branch_speculation(void)
-{
-	unsigned long ax, cx, dx;
-
-	asm volatile(ALTERNATIVE("",
-				 "movl %[msr], %%ecx\n\t"
-				 "movl %[val], %%eax\n\t"
-				 "movl $0, %%edx\n\t"
-				 "wrmsr",
-				 X86_FEATURE_USE_IBRS)
-		     : "=a" (ax), "=c" (cx), "=d" (dx)
-		     : [msr] "i" (MSR_IA32_SPEC_CTRL),
-		       [val] "i" (SPEC_CTRL_IBRS)
-		     : "memory");
-}
-
-static inline void unrestrict_branch_speculation(void)
-{
-	unsigned long ax, cx, dx;
-
-	asm volatile(ALTERNATIVE("",
-				 "movl %[msr], %%ecx\n\t"
-				 "movl %[val], %%eax\n\t"
-				 "movl $0, %%edx\n\t"
-				 "wrmsr",
-				 X86_FEATURE_USE_IBRS)
-		     : "=a" (ax), "=c" (cx), "=d" (dx)
-		     : [msr] "i" (MSR_IA32_SPEC_CTRL),
-		       [val] "i" (0)
-		     : "memory");
-}
-
 /* The Intel SPEC CTRL MSR base value cache */
 extern u64 x86_spec_ctrl_base;
+extern void update_spec_ctrl_cond(u64 val);
+extern u64 spec_ctrl_current(void);
 
 /*
  * With retpoline, we must use IBRS to restrict branch prediction
@@ -334,18 +355,16 @@ extern u64 x86_spec_ctrl_base;
  */
 #define firmware_restrict_branch_speculation_start()			\
 do {									\
-	u64 val = x86_spec_ctrl_base | SPEC_CTRL_IBRS;			\
-									\
 	preempt_disable();						\
-	alternative_msr_write(MSR_IA32_SPEC_CTRL, val,			\
+	alternative_msr_write(MSR_IA32_SPEC_CTRL,			\
+			      spec_ctrl_current() | SPEC_CTRL_IBRS,	\
 			      X86_FEATURE_USE_IBRS_FW);			\
 } while (0)
 
 #define firmware_restrict_branch_speculation_end()			\
 do {									\
-	u64 val = x86_spec_ctrl_base;					\
-									\
-	alternative_msr_write(MSR_IA32_SPEC_CTRL, val,			\
+	alternative_msr_write(MSR_IA32_SPEC_CTRL,			\
+			      spec_ctrl_current(),			\
 			      X86_FEATURE_USE_IBRS_FW);			\
 	preempt_enable();						\
 } while (0)

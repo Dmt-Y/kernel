@@ -440,7 +440,7 @@ static int set_rxmode(struct net_device *dev, int mtu, bool sleep_ok)
  *		   or -1
  *	@addr: the new MAC address value
  *	@persist: whether a new MAC allocation should be persistent
- *	@add_smt: if true also add the address to the HW SMT
+ *	@smt_idx: the destination to store the new SMT index.
  *
  *	Modifies an MPS filter and sets it to the new MAC address if
  *	@tcam_idx >= 0, or adds the MAC address to a new filter if
@@ -1438,6 +1438,7 @@ static int tid_init(struct tid_info *t)
  *	@stid: the server TID
  *	@sip: local IP address to bind server to
  *	@sport: the server's TCP port
+ *	@vlan: the VLAN header information
  *	@queue: queue to direct messages from this server to
  *
  *	Create an IP server for the given port and address.
@@ -2435,7 +2436,7 @@ int cxgb4_create_server_filter(const struct net_device *dev, unsigned int stid,
 
 	/* Clear out filter specifications */
 	memset(&f->fs, 0, sizeof(struct ch_filter_specification));
-	f->fs.val.lport = cpu_to_be16(sport);
+	f->fs.val.lport = be16_to_cpu(sport);
 	f->fs.mask.lport  = ~0;
 	val = (u8 *)&sip;
 	if ((val[0] | val[1] | val[2] | val[3]) != 0) {
@@ -4529,6 +4530,7 @@ static int adap_init0(struct adapter *adap)
 		ret = -ENOMEM;
 		goto bye;
 	}
+	bitmap_zero(adap->sge.blocked_fl, adap->sge.egr_sz);
 #endif
 
 	params[0] = FW_PARAM_PFVF(CLIP_START);
@@ -5765,12 +5767,10 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	setup_memwin(adapter);
 	err = adap_init0(adapter);
-#ifdef CONFIG_DEBUG_FS
-	bitmap_zero(adapter->sge.blocked_fl, adapter->sge.egr_sz);
-#endif
-	setup_memwin_rdma(adapter);
 	if (err)
 		goto out_unmap_bar;
+
+	setup_memwin_rdma(adapter);
 
 	/* configure SGE_STAT_CFG_A to read WC stats */
 	if (!is_t4(adapter->params.chip))

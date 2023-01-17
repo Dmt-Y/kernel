@@ -5,8 +5,8 @@
 #include <asm/percpu.h>
 #include <asm/asm-offsets.h>
 #include <asm/processor-flags.h>
-#include <asm/msr-index.h>
-#include <asm/cpufeatures.h>
+#include <asm/msr.h>
+#include <asm/nospec-branch.h>
 
 /*
 
@@ -155,27 +155,19 @@ For 32-bit we have the following conventions - kernel is built with
 
 .endm
 
-.macro POP_REGS pop_rdi=1 skip_r11rcx=0
+.macro POP_REGS pop_rdi=1
 	popq %r15
 	popq %r14
 	popq %r13
 	popq %r12
 	popq %rbp
 	popq %rbx
-	.if \skip_r11rcx
-	popq %rsi
-	.else
 	popq %r11
-	.endif
 	popq %r10
 	popq %r9
 	popq %r8
 	popq %rax
-	.if \skip_r11rcx
-	popq %rsi
-	.else
 	popq %rcx
-	.endif
 	popq %rdx
 	popq %rsi
 	.if \pop_rdi
@@ -346,6 +338,62 @@ For 32-bit we have the following conventions - kernel is built with
 #endif
 
 /*
+ * IBRS kernel mitigation for Spectre_v2.
+ *
+ * Assumes full context is established (PUSH_REGS, CR3 and GS) and it clobbers
+ * the regs it uses (AX, CX, DX). Must be called before the first RET
+ * instruction (NOTE! UNTRAIN_RET includes a RET instruction)
+ *
+ * The optional argument is used to save/restore the current value,
+ * which is used on the paranoid paths.
+ *
+ * Assumes x86_spec_ctrl_{base,current} to have SPEC_CTRL_IBRS set.
+ */
+.macro IBRS_ENTER save_reg
+	ALTERNATIVE "jmp .Lend_\@", "", X86_FEATURE_KERNEL_IBRS
+	movl	$MSR_IA32_SPEC_CTRL, %ecx
+
+.ifnb \save_reg
+	rdmsr
+	shl	$32, %rdx
+	or	%rdx, %rax
+	mov	%rax, \save_reg
+	test	$SPEC_CTRL_IBRS, %eax
+	jz	.Ldo_wrmsr_\@
+	lfence
+	jmp	.Lend_\@
+.Ldo_wrmsr_\@:
+.endif
+
+	movq	PER_CPU_VAR(x86_spec_ctrl_current), %rdx
+	movl	%edx, %eax
+	shr	$32, %rdx
+	wrmsr
+.Lend_\@:
+.endm
+
+/*
+ * Similar to IBRS_ENTER, requires KERNEL GS,CR3 and clobbers (AX, CX, DX)
+ * regs. Must be called after the last RET.
+ */
+.macro IBRS_EXIT save_reg
+	ALTERNATIVE "jmp .Lend_\@", "", X86_FEATURE_KERNEL_IBRS
+	movl	$MSR_IA32_SPEC_CTRL, %ecx
+
+.ifnb \save_reg
+	mov	\save_reg, %rdx
+.else
+	movq	PER_CPU_VAR(x86_spec_ctrl_current), %rdx
+	andl	$(~SPEC_CTRL_IBRS), %edx
+.endif
+
+	movl	%edx, %eax
+	shr	$32, %rdx
+	wrmsr
+.Lend_\@:
+.endm
+
+/*
  * Mitigate Spectre v1 for conditional swapgs code paths.
  *
  * FENCE_SWAPGS_USER_ENTRY is used in the user entry swapgs code path, to
@@ -376,75 +424,4 @@ For 32-bit we have the following conventions - kernel is built with
 	call enter_from_user_mode
 .Lafter_call_\@:
 #endif
-.endm
-
-/*
- * IBRS related macros
- */
-.macro PUSH_MSR_REGS
-	pushq	%rax
-	pushq	%rcx
-	pushq	%rdx
-.endm
-
-.macro POP_MSR_REGS
-	popq	%rdx
-	popq	%rcx
-	popq	%rax
-.endm
-
-.macro WRMSR_ASM msr_nr:req edx_val:req eax_val:req
-	movl	\msr_nr, %ecx
-	movl	\edx_val, %edx
-	movl	\eax_val, %eax
-	wrmsr
-.endm
-
-.macro RESTRICT_IB_SPEC
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_USE_IBRS
-	PUSH_MSR_REGS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0, $SPEC_CTRL_IBRS
-	POP_MSR_REGS
-.Lskip_\@:
-.endm
-
-.macro UNRESTRICT_IB_SPEC
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_USE_IBRS
-	PUSH_MSR_REGS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0, $0
-	POP_MSR_REGS
-.Lskip_\@:
-.endm
-
-.macro RESTRICT_IB_SPEC_CLOBBER
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_USE_IBRS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0, $SPEC_CTRL_IBRS
-.Lskip_\@:
-.endm
-
-.macro UNRESTRICT_IB_SPEC_CLOBBER
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_USE_IBRS
-	WRMSR_ASM $MSR_IA32_SPEC_CTRL, $0, $0
-.Lskip_\@:
-.endm
-
-.macro RESTRICT_IB_SPEC_SAVE_AND_CLOBBER save_reg:req
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_USE_IBRS
-	movl	$MSR_IA32_SPEC_CTRL, %ecx
-	rdmsr
-	movl	%eax, \save_reg
-	movl	$0, %edx
-	movl	$SPEC_CTRL_IBRS, %eax
-	wrmsr
-.Lskip_\@:
-.endm
-
-.macro RESTORE_IB_SPEC_CLOBBER save_reg:req
-	ALTERNATIVE "jmp .Lskip_\@", "", X86_FEATURE_USE_IBRS
-	/* Set IBRS to the value saved in the save_reg */
-	movl    $MSR_IA32_SPEC_CTRL, %ecx
-	movl    $0, %edx
-	movl    \save_reg, %eax
-	wrmsr
-.Lskip_\@:
 .endm

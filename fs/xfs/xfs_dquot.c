@@ -139,7 +139,10 @@ xfs_qm_adjust_dqtimers(
 	xfs_mount_t		*mp,
 	xfs_disk_dquot_t	*d)
 {
+	struct xfs_dquot	*dqp;
 	ASSERT(d->d_id);
+
+	dqp = container_of(d, struct xfs_dquot, q_core);
 
 #ifdef DEBUG
 	if (d->d_blk_hardlimit)
@@ -160,8 +163,9 @@ xfs_qm_adjust_dqtimers(
 		    (d->d_blk_hardlimit &&
 		     (be64_to_cpu(d->d_bcount) >
 		      be64_to_cpu(d->d_blk_hardlimit)))) {
-			d->d_btimer = cpu_to_be32(get_seconds() +
+			d->d_btimer = cpu_to_be32(ktime_get_real_seconds() +
 					mp->m_quotainfo->qi_btimelimit);
+			dqp->q_blk_timer = be32_to_cpu(d->d_btimer);
 		} else {
 			d->d_bwarns = 0;
 		}
@@ -183,8 +187,9 @@ xfs_qm_adjust_dqtimers(
 		    (d->d_ino_hardlimit &&
 		     (be64_to_cpu(d->d_icount) >
 		      be64_to_cpu(d->d_ino_hardlimit)))) {
-			d->d_itimer = cpu_to_be32(get_seconds() +
+			d->d_itimer = cpu_to_be32(ktime_get_real_seconds() +
 					mp->m_quotainfo->qi_itimelimit);
+			dqp->q_ino_timer = be32_to_cpu(d->d_itimer);
 		} else {
 			d->d_iwarns = 0;
 		}
@@ -206,8 +211,9 @@ xfs_qm_adjust_dqtimers(
 		    (d->d_rtb_hardlimit &&
 		     (be64_to_cpu(d->d_rtbcount) >
 		      be64_to_cpu(d->d_rtb_hardlimit)))) {
-			d->d_rtbtimer = cpu_to_be32(get_seconds() +
+			d->d_rtbtimer = cpu_to_be32(ktime_get_real_seconds() +
 					mp->m_quotainfo->qi_rtbtimelimit);
+			dqp->q_rtb_timer = be32_to_cpu(d->d_rtbtimer);
 		} else {
 			d->d_rtbwarns = 0;
 		}
@@ -254,6 +260,8 @@ xfs_qm_init_dquot_blk(
 		d->dd_diskdq.d_version = XFS_DQUOT_VERSION;
 		d->dd_diskdq.d_id = cpu_to_be32(curid);
 		d->dd_diskdq.d_flags = type;
+		if (curid > 0 && xfs_sb_version_hasbigtime(&mp->m_sb))
+			d->dd_diskdq.d_flags |= XFS_DQTYPE_BIGTIME;
 		if (xfs_sb_version_hascrc(&mp->m_sb)) {
 			uuid_copy(&d->dd_uuid, &mp->m_sb.sb_meta_uuid);
 			xfs_update_cksum((char *)d, sizeof(struct xfs_dqblk),
@@ -639,6 +647,9 @@ xfs_qm_dqread(
 
 	/* copy everything from disk dquot to the incore dquot */
 	memcpy(&dqp->q_core, ddqp, sizeof(xfs_disk_dquot_t));
+	dqp->q_blk_timer = xfs_dquot_from_disk_ts(ddqp, ddqp->d_btimer);
+	dqp->q_ino_timer = xfs_dquot_from_disk_ts(ddqp, ddqp->d_itimer);
+	dqp->q_rtb_timer = xfs_dquot_from_disk_ts(ddqp, ddqp->d_rtbtimer);
 	xfs_qm_dquot_logitem_init(dqp);
 
 	/*
@@ -1083,6 +1094,9 @@ xfs_qm_dqflush(
 	}
 
 	/* This is the only portion of data that needs to persist */
+	dqp->q_core.d_btimer = xfs_dquot_to_disk_ts(dqp, dqp->q_blk_timer);
+	dqp->q_core.d_itimer = xfs_dquot_to_disk_ts(dqp, dqp->q_ino_timer);
+	dqp->q_core.d_rtbtimer = xfs_dquot_to_disk_ts(dqp, dqp->q_rtb_timer);
 	memcpy(ddqp, &dqp->q_core, sizeof(xfs_disk_dquot_t));
 
 	/*

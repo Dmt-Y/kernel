@@ -116,8 +116,7 @@ int mod_verify_sig(const void *mod, struct load_info *info)
 	info->len = modlen;
 
 	if (ms.id_type != PKEY_ID_PKCS7) {
-		pr_err("%s: Module is not signed with expected PKCS#7 message\n",
-		       info->mod->name);
+		pr_err("Module is not signed with expected PKCS#7 message\n");
 		return -ENOPKG;
 	}
 
@@ -128,8 +127,7 @@ int mod_verify_sig(const void *mod, struct load_info *info)
 	    ms.__pad[0] != 0 ||
 	    ms.__pad[1] != 0 ||
 	    ms.__pad[2] != 0) {
-		pr_err("%s: PKCS#7 signature info has unexpected non-zero params\n",
-		       info->mod->name);
+		pr_err("PKCS#7 signature info has unexpected non-zero params\n");
 		return -EBADMSG;
 	}
 

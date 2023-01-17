@@ -492,7 +492,7 @@ static struct pmac_i2c_host_kw *__init kw_i2c_host_init(struct device_node *np)
 	const u32		*psteps, *prate, *addrp;
 	u32			steps;
 
-	host = kzalloc(sizeof(struct pmac_i2c_host_kw), GFP_KERNEL);
+	host = kzalloc(sizeof(*host), GFP_KERNEL);
 	if (host == NULL) {
 		printk(KERN_ERR "low_i2c: Can't allocate host for %pOF\n",
 		       np);
@@ -919,10 +919,9 @@ static void __init smu_i2c_probe(void)
 	 * type as older device trees mix i2c busses and other things
 	 * at the same level
 	 */
-	for (busnode = NULL;
-	     (busnode = of_get_next_child(controller, busnode)) != NULL;) {
-		if (strcmp(busnode->type, "i2c") &&
-		    strcmp(busnode->type, "i2c-bus"))
+	for_each_child_of_node(controller, busnode) {
+		if (!of_node_is_type(busnode, "i2c") &&
+		    !of_node_is_type(busnode, "i2c-bus"))
 			continue;
 		reg = of_get_property(busnode, "reg", NULL);
 		if (reg == NULL)
