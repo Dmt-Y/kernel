@@ -5308,7 +5308,11 @@ static inline u16 pqi_get_hw_queue(struct pqi_ctrl_info *ctrl_info,
 {
 	u16 hw_queue;
 
-	hw_queue = blk_mq_unique_tag_to_hwq(blk_mq_unique_tag(scmd->request));
+	if (shost_use_blk_mq(scmd->device->host))
+		hw_queue = blk_mq_unique_tag_to_hwq(blk_mq_unique_tag(scmd->request));
+	else
+		hw_queue = smp_processor_id();
+
 	if (hw_queue > ctrl_info->max_hw_queue_index)
 		hw_queue = 0;
 
