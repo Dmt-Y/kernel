@@ -801,7 +801,9 @@ struct dwc3_scratchpad_array {
  * @usb3_phy: pointer to USB3 PHY
  * @usb2_generic_phy: pointer to USB2 PHY
  * @usb3_generic_phy: pointer to USB3 PHY
+ * @phys_ready: flag to indicate that PHYs are ready
  * @ulpi: pointer to ulpi interface
+ * @ulpi_ready: flag to indicate that ULPI is initialized
  * @dcfg: saved contents of DCFG register
  * @gctl: saved contents of GCTL register
  * @isoch_delay: wValue from Set Isochronous Delay request;
@@ -900,7 +902,6 @@ struct dwc3 {
 	struct phy		*usb3_generic_phy;
 
 	struct ulpi		*ulpi;
-
 	void __iomem		*regs;
 	size_t			regs_size;
 
@@ -1016,6 +1017,10 @@ struct dwc3 {
 	unsigned		tx_de_emphasis:2;
 
 	u16			imod_interval;
+#ifndef __GENKSYMS__
+	bool			phys_ready;
+	bool			ulpi_ready;
+#endif
 };
 
 #define work_to_dwc(w)		(container_of((w), struct dwc3, drd_work))
