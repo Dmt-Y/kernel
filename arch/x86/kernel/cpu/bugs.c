@@ -333,7 +333,7 @@ static void __init l1tf_select_mitigation(void)
 		return;
 	}
 
-	setup_force_cpu_cap(X86_FEATURE_L1TF_FIX);
+	setup_force_cpu_cap(X86_FEATURE_L1TF_PTEINV);
 }
 
 
@@ -2263,7 +2263,7 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 		return sprintf(buf, "%s\n", ssb_strings[ssb_mode]);
 
 	case X86_BUG_L1TF:
-		if (boot_cpu_has(X86_FEATURE_L1TF_FIX))
+		if (boot_cpu_has(X86_FEATURE_L1TF_PTEINV))
 			return l1tf_show_state(buf);
 		break;
 
