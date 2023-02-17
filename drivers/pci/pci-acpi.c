@@ -546,7 +546,6 @@ static bool acpi_pci_bridge_d3(struct pci_dev *dev)
 	unsigned long long state;
 	const union acpi_object *obj;
 	struct pci_dev *root;
-	u8 val;
 
 	if (!dev->is_hotplug_bridge)
 		return false;
