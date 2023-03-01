@@ -460,6 +460,10 @@ redo_search:
 		list_add_tail(&xprt->xpt_ready, &pool->sp_sockets);
 		pool->sp_stats.sockets_queued++;
 		spin_unlock_bh(&pool->sp_lock);
+		/* Ensure the "lockless check" of RQ_BUSY sees rq_flags
+		 * *after* we have added to the sp_sockets queue.
+		 */
+		smp_mb();
 		goto redo_search;
 	}
 	rqstp = NULL;
