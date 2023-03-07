@@ -339,26 +339,6 @@ err_tlock:
 }
 EXPORT_SYMBOL_GPL(l2tp_session_register);
 
-/* Lookup a tunnel by id
- */
-struct l2tp_tunnel *l2tp_tunnel_find(const struct net *net, u32 tunnel_id)
-{
-	struct l2tp_tunnel *tunnel;
-	struct l2tp_net *pn = l2tp_pernet(net);
-
-	rcu_read_lock_bh();
-	list_for_each_entry_rcu(tunnel, &pn->l2tp_tunnel_list, list) {
-		if (tunnel->tunnel_id == tunnel_id) {
-			rcu_read_unlock_bh();
-			return tunnel;
-		}
-	}
-	rcu_read_unlock_bh();
-
-	return NULL;
-}
-EXPORT_SYMBOL_GPL(l2tp_tunnel_find);
-
 struct l2tp_tunnel *l2tp_tunnel_find_nth(const struct net *net, int nth)
 {
 	struct l2tp_net *pn = l2tp_pernet(net);
@@ -1213,8 +1193,10 @@ static void l2tp_tunnel_destruct(struct sock *sk)
 	}
 
 	/* Remove hooks into tunnel socket */
+	write_lock_bh(&sk->sk_callback_lock);
 	sk->sk_destruct = tunnel->old_sk_destruct;
 	sk->sk_user_data = NULL;
+	write_unlock_bh(&sk->sk_callback_lock);
 
 	/* Call the original destructor */
 	if (sk->sk_destruct)
@@ -1450,75 +1432,10 @@ int l2tp_tunnel_create(struct net *net, int fd, int version, u32 tunnel_id, u32 
 {
 	struct l2tp_tunnel *tunnel = NULL;
 	int err;
-	struct socket *sock = NULL;
-	struct sock *sk = NULL;
-	struct l2tp_net *pn;
 	enum l2tp_encap_type encap = L2TP_ENCAPTYPE_UDP;
-
-	/* Get the tunnel socket from the fd, which was opened by
-	 * the userspace L2TP daemon. If not specified, create a
-	 * kernel socket.
-	 */
-	if (fd < 0) {
-		err = l2tp_tunnel_sock_create(net, tunnel_id, peer_tunnel_id,
-				cfg, &sock);
-		if (err < 0)
-			goto err;
-	} else {
-		sock = sockfd_lookup(fd, &err);
-		if (!sock) {
-			pr_err("tunl %u: sockfd_lookup(fd=%d) returned %d\n",
-			       tunnel_id, fd, err);
-			err = -EBADF;
-			goto err;
-		}
-
-		/* Reject namespace mismatches */
-		if (!net_eq(sock_net(sock->sk), net)) {
-			pr_err("tunl %u: netns mismatch\n", tunnel_id);
-			err = -EINVAL;
-			goto err;
-		}
-	}
-
-	sk = sock->sk;
 
 	if (cfg != NULL)
 		encap = cfg->encap;
-
-	/* Quick sanity checks */
-	err = -EPROTONOSUPPORT;
-	if (sk->sk_type != SOCK_DGRAM) {
-		pr_debug("tunl %hu: fd %d wrong socket type\n",
-			 tunnel_id, fd);
-		goto err;
-	}
-	if (sk->sk_family != PF_INET && sk->sk_family != PF_INET6)
-		goto err;
-	switch (encap) {
-	case L2TP_ENCAPTYPE_UDP:
-		if (sk->sk_protocol != IPPROTO_UDP) {
-			pr_err("tunl %hu: fd %d wrong protocol, got %d, expected %d\n",
-			       tunnel_id, fd, sk->sk_protocol, IPPROTO_UDP);
-			goto err;
-		}
-		break;
-	case L2TP_ENCAPTYPE_IP:
-		if (sk->sk_protocol != IPPROTO_L2TP) {
-			pr_err("tunl %hu: fd %d wrong protocol, got %d, expected %d\n",
-			       tunnel_id, fd, sk->sk_protocol, IPPROTO_L2TP);
-			goto err;
-		}
-		break;
-	}
-
-	/* Check if this socket has already been prepped */
-	tunnel = l2tp_tunnel(sk);
-	if (tunnel != NULL) {
-		/* This socket has already been prepped */
-		err = -EBUSY;
-		goto err;
-	}
 
 	tunnel = kzalloc(sizeof(struct l2tp_tunnel), GFP_KERNEL);
 	if (tunnel == NULL) {
@@ -1536,71 +1453,132 @@ int l2tp_tunnel_create(struct net *net, int fd, int version, u32 tunnel_id, u32 
 	rwlock_init(&tunnel->hlist_lock);
 	tunnel->acpt_newsess = true;
 
-	/* The net we belong to */
-	tunnel->l2tp_net = net;
-	pn = l2tp_pernet(net);
-
 	if (cfg != NULL)
 		tunnel->debug = cfg->debug;
 
-	/* Mark socket as an encapsulation socket. See net/ipv4/udp.c */
 	tunnel->encap = encap;
-	if (encap == L2TP_ENCAPTYPE_UDP) {
-		struct udp_tunnel_sock_cfg udp_cfg = { };
 
-		udp_cfg.sk_user_data = tunnel;
-		udp_cfg.encap_type = UDP_ENCAP_L2TPINUDP;
-		udp_cfg.encap_rcv = l2tp_udp_encap_recv;
-		udp_cfg.encap_destroy = l2tp_udp_encap_destroy;
-
-		setup_udp_tunnel_sock(net, sock, &udp_cfg);
-	} else {
-		sk->sk_user_data = tunnel;
-	}
-
-	/* Bump the reference count. The tunnel context is deleted
-	 * only when this drops to zero. A reference is also held on
-	 * the tunnel socket to ensure that it is not released while
-	 * the tunnel is extant. Must be done before sk_destruct is
-	 * set.
-	 */
 	l2tp_tunnel_inc_refcount(tunnel);
-	sock_hold(sk);
-	tunnel->sock = sk;
 	tunnel->fd = fd;
-
-	/* Hook on the tunnel socket destructor so that we can cleanup
-	 * if the tunnel socket goes away.
-	 */
-	tunnel->old_sk_destruct = sk->sk_destruct;
-	sk->sk_destruct = &l2tp_tunnel_destruct;
-	lockdep_set_class_and_name(&sk->sk_lock.slock, &l2tp_socket_class, "l2tp_sock");
-
-	sk->sk_allocation = GFP_ATOMIC;
 
 	/* Init delete workqueue struct */
 	INIT_WORK(&tunnel->del_work, l2tp_tunnel_del_work);
 
-	/* Add tunnel to our list */
 	INIT_LIST_HEAD(&tunnel->list);
-	spin_lock_bh(&pn->l2tp_tunnel_list_lock);
-	list_add_rcu(&tunnel->list, &pn->l2tp_tunnel_list);
-	spin_unlock_bh(&pn->l2tp_tunnel_list_lock);
 
 	err = 0;
 err:
 	if (tunnelp)
 		*tunnelp = tunnel;
 
-	/* If tunnel's socket was created by the kernel, it doesn't
-	 *  have a file.
-	 */
-	if (sock && sock->file)
-		sockfd_put(sock);
-
 	return err;
 }
 EXPORT_SYMBOL_GPL(l2tp_tunnel_create);
+
+static int l2tp_validate_socket(const struct sock *sk, const struct net *net,
+				enum l2tp_encap_type encap)
+{
+	if (!net_eq(sock_net(sk), net))
+		return -EINVAL;
+
+	if (sk->sk_type != SOCK_DGRAM)
+		return -EPROTONOSUPPORT;
+
+	if (sk->sk_family != PF_INET && sk->sk_family != PF_INET6)
+		return -EINVAL;
+
+	if ((encap == L2TP_ENCAPTYPE_UDP && sk->sk_protocol != IPPROTO_UDP) ||
+	    (encap == L2TP_ENCAPTYPE_IP && sk->sk_protocol != IPPROTO_L2TP))
+		return -EPROTONOSUPPORT;
+
+	if (sk->sk_user_data)
+		return -EBUSY;
+
+	return 0;
+}
+
+int l2tp_tunnel_register(struct l2tp_tunnel *tunnel, struct net *net,
+			 struct l2tp_tunnel_cfg *cfg)
+{
+	struct l2tp_tunnel *tunnel_walk;
+	struct l2tp_net *pn;
+	struct socket *sock;
+	struct sock *sk;
+	int ret;
+
+	if (tunnel->fd < 0) {
+		ret = l2tp_tunnel_sock_create(net, tunnel->tunnel_id,
+					      tunnel->peer_tunnel_id, cfg,
+					      &sock);
+		if (ret < 0)
+			goto err;
+	} else {
+		sock = sockfd_lookup(tunnel->fd, &ret);
+		if (!sock)
+			goto err;
+	}
+
+	sk = sock->sk;
+	write_lock(&sk->sk_callback_lock);
+
+	ret = l2tp_validate_socket(sk, net, tunnel->encap);
+	if (ret < 0)
+		goto err_sock;
+
+	tunnel->l2tp_net = net;
+	pn = l2tp_pernet(net);
+
+	sock_hold(sk);
+	tunnel->sock = sk;
+
+	spin_lock_bh(&pn->l2tp_tunnel_list_lock);
+	list_for_each_entry(tunnel_walk, &pn->l2tp_tunnel_list, list) {
+		if (tunnel_walk->tunnel_id == tunnel->tunnel_id) {
+			spin_unlock_bh(&pn->l2tp_tunnel_list_lock);
+
+			ret = -EEXIST;
+			goto err_sock;
+		}
+	}
+	list_add_rcu(&tunnel->list, &pn->l2tp_tunnel_list);
+	spin_unlock_bh(&pn->l2tp_tunnel_list_lock);
+
+	if (tunnel->encap == L2TP_ENCAPTYPE_UDP) {
+		struct udp_tunnel_sock_cfg udp_cfg = {
+			.sk_user_data = tunnel,
+			.encap_type = UDP_ENCAP_L2TPINUDP,
+			.encap_rcv = l2tp_udp_encap_recv,
+			.encap_destroy = l2tp_udp_encap_destroy,
+		};
+
+		setup_udp_tunnel_sock(net, sock, &udp_cfg);
+	} else {
+		rcu_assign_sk_user_data(sk, tunnel);
+	}
+
+	tunnel->old_sk_destruct = sk->sk_destruct;
+	sk->sk_destruct = &l2tp_tunnel_destruct;
+	lockdep_set_class_and_name(&sk->sk_lock.slock, &l2tp_socket_class,
+				   "l2tp_sock");
+	sk->sk_allocation = GFP_ATOMIC;
+
+	if (tunnel->fd >= 0)
+		sockfd_put(sock);
+
+	write_unlock(&sk->sk_callback_lock);
+	return 0;
+
+err_sock:
+	if (tunnel->fd < 0)
+		sock_release(sock);
+	else
+		sockfd_put(sock);
+
+	write_unlock(&sk->sk_callback_lock);
+err:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(l2tp_tunnel_register);
 
 /* This function is used by the netlink TUNNEL_DELETE command.
  */
