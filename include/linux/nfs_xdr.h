@@ -1509,7 +1509,11 @@ struct nfs_commit_data {
 };
 
 struct nfs_pgio_completion_ops {
+#ifdef __GENKSYMS__
 	void	(*error_cleanup)(struct list_head *head);
+#else
+	void	(*error_cleanup)(struct list_head *head, int);
+#endif
 	void	(*init_hdr)(struct nfs_pgio_header *hdr);
 	void	(*completion)(struct nfs_pgio_header *hdr);
 	void	(*reschedule_io)(struct nfs_pgio_header *hdr);
