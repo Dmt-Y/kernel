@@ -52,7 +52,11 @@ else
 LDFLAGS += $(shell $(LD) --help 2>&1 | grep -q "\-z noreloc-overflow" \
 	&& echo "-z noreloc-overflow -pie --no-dynamic-linker")
 endif
-LDFLAGS_vmlinux := -T
+LDFLAGS_vmlinux := -z noexecstack
+ifeq (y,y)
+LDFLAGS_vmlinux += $(call ld-option,--no-warn-rwx-segments)
+endif
+LDFLAGS_vmlinux += -T
 
 hostprogs-y	:= mkpiggy
 HOST_EXTRACFLAGS += -I$(srctree)/tools/include

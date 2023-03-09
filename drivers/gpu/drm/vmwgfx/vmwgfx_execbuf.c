@@ -1405,7 +1405,7 @@ static int vmw_cmd_dx_define_query(struct vmw_private *dev_priv,
 	struct vmw_resource *cotable_res;
 
 
-	if (ctx_node == NULL) {
+	if (!ctx_node || !ctx_node->res) {
 		DRM_ERROR("DX Context not set for query.\n");
 		return -EINVAL;
 	}
