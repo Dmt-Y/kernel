@@ -491,10 +491,10 @@ static int swap_writer_finish(struct swap_map_handle *handle,
 		unsigned int flags, int error)
 {
 	if (!error) {
-		flush_swap_writer(handle);
 		printk(KERN_INFO "PM: S");
 		error = mark_swapfiles(handle, flags);
 		printk("|\n");
+		flush_swap_writer(handle);
 	}
 
 	if (error)
