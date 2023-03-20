@@ -665,7 +665,8 @@ choose_pool(struct svc_serv *serv, struct svc_pool *pool, unsigned int *state)
  * Choose a thread to kill, for svc_set_num_threads
  */
 static inline struct task_struct *
-choose_victim(struct svc_serv *serv, struct svc_pool *pool, unsigned int *state)
+choose_victim(struct svc_serv *serv, struct svc_pool *pool, unsigned int *state,
+	      struct svc_rqst **rqstpp)
 {
 	unsigned int i;
 	struct task_struct *task = NULL;
@@ -696,6 +697,8 @@ found_pool:
 		set_bit(RQ_VICTIM, &rqstp->rq_flags);
 		list_del_rcu(&rqstp->rq_all);
 		task = rqstp->rq_task;
+		if (rqstpp)
+			*rqstpp = rqstp;
 	}
 	spin_unlock_bh(&pool->sp_lock);
 
@@ -751,7 +754,7 @@ svc_signal_kthreads(struct svc_serv *serv, struct svc_pool *pool, int nrservs)
 
 	/* destroy old threads */
 	do {
-		task = choose_victim(serv, pool, &state);
+		task = choose_victim(serv, pool, &state, NULL);
 		if (task == NULL)
 			break;
 		send_sig(SIGINT, task, 1);
@@ -799,15 +802,18 @@ EXPORT_SYMBOL_GPL(svc_set_num_threads);
 static int
 svc_stop_kthreads(struct svc_serv *serv, struct svc_pool *pool, int nrservs)
 {
+	struct svc_rqst	*rqstp;
 	struct task_struct *task;
 	unsigned int state = serv->sv_nrthreads-1;
 
 	/* destroy old threads */
 	do {
-		task = choose_victim(serv, pool, &state);
+		task = choose_victim(serv, pool, &state, &rqstp);
 		if (task == NULL)
 			break;
-		kthread_stop(task);
+		/* Did we lose a race to svo_function threadfn? */
+		if (kthread_stop(task) == -EINTR)
+			svc_exit_thread(rqstp);
 		nrservs++;
 	} while (nrservs < 0);
 	return 0;
