@@ -873,7 +873,7 @@ static int pci_pm_suspend_noirq(struct device *dev)
 			pci_dev->bus->self->skip_bus_pm = true;
 	}
 
-	if (pci_dev->skip_bus_pm && !pm_suspend_via_firmware()) {
+	if (pci_dev->skip_bus_pm && pm_suspend_no_platform()) {
 		dev_dbg(dev, "PCI PM: Skipped\n");
 		goto Fixup;
 	}
@@ -928,10 +928,10 @@ static int pci_pm_resume_noirq(struct device *dev)
 	/*
 	 * In the suspend-to-idle case, devices left in D0 during suspend will
 	 * stay in D0, so it is not necessary to restore or update their
-	 * configuration here and attempting to put them into D0 again may
-	 * confuse some firmware, so avoid doing that.
+	 * configuration here and attempting to put them into D0 again is
+	 * pointless, so avoid doing that.
 	 */
-	if (!pci_dev->skip_bus_pm || pm_suspend_via_firmware())
+	if (!(pci_dev->skip_bus_pm && pm_suspend_no_platform()))
 		pci_pm_default_resume_early(pci_dev);
 
 	pci_fixup_device(pci_fixup_resume_early, pci_dev);
@@ -1090,16 +1090,21 @@ static int pci_pm_thaw_noirq(struct device *dev)
 			return error;
 	}
 
-	if (pci_has_legacy_pm_support(pci_dev))
-		return pci_legacy_resume_early(dev);
-
 	/*
-	 * pci_restore_state() requires the device to be in D0 (because of MSI
-	 * restoration among other things), so force it into D0 in case the
-	 * driver's "freeze" callbacks put it into a low-power state directly.
+	 * Both the legacy ->resume_early() and the new pm->thaw_noirq()
+	 * callbacks assume the device has been returned to D0 and its
+	 * config state has been restored.
+	 *
+	 * In addition, pci_restore_state() restores MSI-X state in MMIO
+	 * space, which requires the device to be in D0, so return it to D0
+	 * in case the driver's "freeze" callbacks put it into a low-power
+	 * state.
 	 */
 	pci_set_power_state(pci_dev, PCI_D0);
 	pci_restore_state(pci_dev);
+
+	if (pci_has_legacy_pm_support(pci_dev))
+		return pci_legacy_resume_early(dev);
 
 	if (drv && drv->pm && drv->pm->thaw_noirq)
 		error = drv->pm->thaw_noirq(dev);

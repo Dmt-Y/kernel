@@ -460,6 +460,9 @@ int suspend_devices_and_enter(suspend_state_t state)
 	if (!sleep_state_supported(state))
 		return -ENOSYS;
 
+	if (state == PM_SUSPEND_FREEZE)
+		pm_set_suspend_no_platform();
+
 	error = platform_suspend_begin(state);
 	if (error)
 		goto Close;
