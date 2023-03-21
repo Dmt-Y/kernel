@@ -343,10 +343,6 @@ size_t ring_buffer_page_len(void *page)
 		+ BUF_PAGE_HDR_SIZE;
 }
 
-/*
- * Also stolen from mm/slob.c. Thanks to Mathieu Desnoyers for pointing
- * this issue out.
- */
 static void free_buffer_page(struct buffer_page *bpage)
 {
 	free_page((unsigned long)bpage->page);
