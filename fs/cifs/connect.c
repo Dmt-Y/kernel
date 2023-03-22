@@ -996,7 +996,7 @@ smb2_get_credits_from_hdr(char *buffer, struct TCP_Server_Info *server)
 	/*
 	 * SMB1 does not use credits.
 	 */
-	if (server->vals->header_preamble_size)
+	if (HEADER_PREAMBLE_SIZE(server))
 		return 0;
 
 	return le16_to_cpu(shdr->CreditRequest);
@@ -1128,7 +1128,7 @@ standard_receive3(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 
 	/* make sure this will fit in a large buffer */
 	if (pdu_length > CIFSMaxBufSize + MAX_HEADER_SIZE(server) -
-		server->vals->header_preamble_size) {
+	    HEADER_PREAMBLE_SIZE(server)) {
 		cifs_server_dbg(VFS, "SMB response too long (%u bytes)\n", pdu_length);
 		cifs_reconnect(server);
 		return -ECONNABORTED;
@@ -1143,8 +1143,8 @@ standard_receive3(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 
 	/* now read the rest */
 	length = cifs_read_from_socket(server, buf + HEADER_SIZE(server) - 1,
-				       pdu_length - HEADER_SIZE(server) + 1
-				       + server->vals->header_preamble_size);
+				       pdu_length - HEADER_SIZE(server) + 1 +
+				       HEADER_PREAMBLE_SIZE(server));
 
 	if (length < 0)
 		return length;
@@ -1200,7 +1200,7 @@ smb2_add_credits_from_hdr(char *buffer, struct TCP_Server_Info *server)
 	/*
 	 * SMB1 does not use credits.
 	 */
-	if (server->vals->header_preamble_size)
+	if (HEADER_PREAMBLE_SIZE(server))
 		return;
 
 	if (shdr->CreditRequest) {
@@ -1256,7 +1256,7 @@ cifs_demultiplex_thread(void *p)
 		if (length < 0)
 			continue;
 
-		if (server->vals->header_preamble_size == 0)
+		if (HEADER_PREAMBLE_SIZE(server) == 0)
 			server->total_read = 0;
 		else
 			server->total_read = length;
@@ -1275,7 +1275,7 @@ next_pdu:
 
 		/* make sure we have enough to get to the MID */
 		if (server->pdu_size < HEADER_SIZE(server) - 1 -
-		    server->vals->header_preamble_size) {
+		    HEADER_PREAMBLE_SIZE(server)) {
 			cifs_server_dbg(VFS, "SMB response too short (%u bytes)\n",
 				 server->pdu_size);
 			cifs_reconnect(server);
@@ -1284,9 +1284,9 @@ next_pdu:
 
 		/* read down to the MID */
 		length = cifs_read_from_socket(server,
-			     buf + server->vals->header_preamble_size,
-			     HEADER_SIZE(server) - 1
-			     - server->vals->header_preamble_size);
+			     buf + HEADER_PREAMBLE_SIZE(server),
+			     HEADER_SIZE(server) - 1 -
+			     HEADER_PREAMBLE_SIZE(server));
 		if (length < 0)
 			continue;
 		server->total_read += length;

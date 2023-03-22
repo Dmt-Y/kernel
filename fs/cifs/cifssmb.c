@@ -1449,7 +1449,7 @@ int
 cifs_discard_remaining_data(struct TCP_Server_Info *server)
 {
 	unsigned int rfclen = server->pdu_size;
-	int remaining = rfclen + server->vals->header_preamble_size -
+	int remaining = rfclen + HEADER_PREAMBLE_SIZE(server) -
 		server->total_read;
 
 	while (remaining > 0) {
@@ -1495,8 +1495,7 @@ cifs_readv_receive(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 	unsigned int data_offset, data_len;
 	struct cifs_readdata *rdata = mid->callback_data;
 	char *buf = server->smallbuf;
-	unsigned int buflen = server->pdu_size +
-		server->vals->header_preamble_size;
+	unsigned int buflen = server->pdu_size + HEADER_PREAMBLE_SIZE(server);
 	bool use_rdma_mr = false;
 
 	cifs_dbg(FYI, "%s: mid=%llu offset=%llu bytes=%u\n",
@@ -1530,10 +1529,10 @@ cifs_readv_receive(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 
 	/* set up first two iov for signature check and to get credits */
 	rdata->iov[0].iov_base = buf;
-	rdata->iov[0].iov_len = server->vals->header_preamble_size;
-	rdata->iov[1].iov_base = buf + server->vals->header_preamble_size;
+	rdata->iov[0].iov_len = HEADER_PREAMBLE_SIZE(server);
+	rdata->iov[1].iov_base = buf + HEADER_PREAMBLE_SIZE(server);
 	rdata->iov[1].iov_len =
-		server->total_read - server->vals->header_preamble_size;
+		server->total_read - HEADER_PREAMBLE_SIZE(server);
 	cifs_dbg(FYI, "0: iov_base=%p iov_len=%zu\n",
 		 rdata->iov[0].iov_base, rdata->iov[0].iov_len);
 	cifs_dbg(FYI, "1: iov_base=%p iov_len=%zu\n",
@@ -1558,7 +1557,7 @@ cifs_readv_receive(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 	}
 
 	data_offset = server->ops->read_data_offset(buf) +
-		server->vals->header_preamble_size;
+		HEADER_PREAMBLE_SIZE(server);
 	if (data_offset < server->total_read) {
 		/*
 		 * win2k8 sometimes sends an offset of 0 when the read

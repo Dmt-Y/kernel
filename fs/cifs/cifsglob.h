@@ -540,6 +540,7 @@ struct smb_version_values {
 
 #define HEADER_SIZE(server) (server->vals->header_size)
 #define MAX_HEADER_SIZE(server) (server->vals->max_header_size)
+#define HEADER_PREAMBLE_SIZE(server) (server->vals->header_preamble_size)
 
 struct smb_vol {
 	char *username;
