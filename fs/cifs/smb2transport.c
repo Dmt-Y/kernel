@@ -521,9 +521,13 @@ smb2_sign_rqst(struct smb_rqst *rqst, struct TCP_Server_Info *server)
 	struct smb2_sync_hdr *shdr =
 			(struct smb2_sync_hdr *)rqst->rq_iov[0].iov_base;
 
+	spin_lock(&server->srv_lock);
 	if (!(shdr->Flags & SMB2_FLAGS_SIGNED) ||
-	    server->tcpStatus == CifsNeedNegotiate)
+	    server->tcpStatus == CifsNeedNegotiate) {
+		spin_unlock(&server->srv_lock);
 		return rc;
+	}
+	spin_unlock(&server->srv_lock);
 
 	if (!server->session_estab) {
 		strncpy(shdr->Signature, "BSRSPYL", 8);
@@ -639,37 +643,50 @@ static int
 smb2_get_mid_entry(struct cifs_ses *ses, struct smb2_sync_hdr *shdr,
 		   struct mid_q_entry **mid)
 {
-	if (ses->server->tcpStatus == CifsExiting)
+	spin_lock(&ses->server->srv_lock);
+	if (ses->server->tcpStatus == CifsExiting) {
+		spin_unlock(&ses->server->srv_lock);
 		return -ENOENT;
+	}
 
 	if (ses->server->tcpStatus == CifsNeedReconnect) {
+		spin_unlock(&ses->server->srv_lock);
 		cifs_dbg(FYI, "tcp session dead - return to caller to retry\n");
 		return -EAGAIN;
 	}
 
 	if (ses->server->tcpStatus == CifsNeedNegotiate &&
-	   shdr->Command != SMB2_NEGOTIATE)
+	   shdr->Command != SMB2_NEGOTIATE) {
+		spin_unlock(&ses->server->srv_lock);
 		return -EAGAIN;
+	}
+	spin_unlock(&ses->server->srv_lock);
 
+	spin_lock(&ses->ses_lock);
 	if (ses->status == CifsNew) {
 		if ((shdr->Command != SMB2_SESSION_SETUP) &&
-		    (shdr->Command != SMB2_NEGOTIATE))
+		    (shdr->Command != SMB2_NEGOTIATE)) {
+			spin_unlock(&ses->ses_lock);
 			return -EAGAIN;
+		}
 		/* else ok - we are setting up session */
 	}
 
 	if (ses->status == CifsExiting) {
-		if (shdr->Command != SMB2_LOGOFF)
+		if (shdr->Command != SMB2_LOGOFF) {
+			spin_unlock(&ses->ses_lock);
 			return -EAGAIN;
+		}
 		/* else ok - we are shutting down the session */
 	}
+	spin_unlock(&ses->ses_lock);
 
 	*mid = smb2_mid_entry_alloc(shdr, ses->server);
 	if (*mid == NULL)
 		return -ENOMEM;
-	spin_lock(&GlobalMid_Lock);
+	spin_lock(&ses->server->mid_lock);
 	list_add_tail(&(*mid)->qhead, &ses->server->pending_mid_q);
-	spin_unlock(&GlobalMid_Lock);
+	spin_unlock(&ses->server->mid_lock);
 
 	return 0;
 }
@@ -734,9 +751,13 @@ smb2_setup_async_request(struct TCP_Server_Info *server, struct smb_rqst *rqst)
 			(struct smb2_sync_hdr *)rqst->rq_iov[0].iov_base;
 	struct mid_q_entry *mid;
 
+	spin_lock(&server->srv_lock);
 	if (server->tcpStatus == CifsNeedNegotiate &&
-	   shdr->Command != SMB2_NEGOTIATE)
+	   shdr->Command != SMB2_NEGOTIATE) {
+		spin_unlock(&server->srv_lock);
 		return ERR_PTR(-EAGAIN);
+	}
+	spin_unlock(&server->srv_lock);
 
 	smb2_seq_num_into_buf(server, shdr);
 

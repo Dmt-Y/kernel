@@ -179,6 +179,7 @@ smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon)
 	if (smb2_command == SMB2_TREE_CONNECT || smb2_command == SMB2_IOCTL)
 		return 0;
 
+	spin_lock(&tcon->tc_lock);
 	if (tcon->tidStatus == CifsExiting) {
 		/*
 		 * only tree disconnect, open, and write,
@@ -188,14 +189,23 @@ smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon)
 		if ((smb2_command != SMB2_WRITE) &&
 		   (smb2_command != SMB2_CREATE) &&
 		   (smb2_command != SMB2_TREE_DISCONNECT)) {
+			spin_unlock(&tcon->tc_lock);
 			cifs_dbg(FYI, "can not send cmd %d while umounting\n",
 				 smb2_command);
 			return -ENODEV;
 		}
 	}
-	if ((!tcon->ses) || (tcon->ses->status == CifsExiting) ||
-	    (!tcon->ses->server))
+	spin_unlock(&tcon->tc_lock);
+
+	if (!tcon->ses)
 		return -EIO;
+
+	spin_lock(&tcon->ses->ses_lock);
+	if ((tcon->ses->status == CifsExiting) || (!tcon->ses->server)) {
+		spin_unlock(&tcon->ses->ses_lock);
+		return -EIO;
+	}
+	spin_unlock(&tcon->ses->ses_lock);
 
 	ses = tcon->ses;
 	server = ses->server;
@@ -207,6 +217,7 @@ smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon)
 	 * reconnect -- should be greater than cifs socket timeout which is 7
 	 * seconds.
 	 */
+	spin_lock(&server->srv_lock);
 	while (server->tcpStatus == CifsNeedReconnect) {
 		/*
 		 * Return to caller for TREE_DISCONNECT and LOGOFF and CLOSE
@@ -220,6 +231,7 @@ smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon)
 		case SMB2_CANCEL:
 		case SMB2_CLOSE:
 		case SMB2_OPLOCK_BREAK:
+			spin_unlock(&server->srv_lock);
 			return -EAGAIN;
 		}
 
@@ -227,6 +239,7 @@ smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon)
 						      (server->tcpStatus != CifsNeedReconnect),
 						      10 * HZ);
 		if (rc < 0) {
+			spin_unlock(&server->srv_lock);
 			cifs_dbg(FYI, "%s: aborting reconnect due to a received"
 				 " signal by the process\n", __func__);
 			return -ERESTARTSYS;
@@ -245,11 +258,13 @@ smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon)
 		 * back on-line
 		 */
 		if (!tcon->retry) {
+			spin_unlock(&server->srv_lock);
 			cifs_dbg(FYI, "gave up waiting on reconnect in smb_init\n");
 			return -EHOSTDOWN;
 		}
 		retries = server->nr_targets;
 	}
+	spin_unlock(&server->srv_lock);
 
 	if (!tcon->ses->need_reconnect && !tcon->need_reconnect)
 		return 0;
@@ -267,11 +282,14 @@ smb2_reconnect(__le16 smb2_command, struct cifs_tcon *tcon)
 	 * and the server never sends an answer the socket will be closed
 	 * and tcpStatus set to reconnect.
 	 */
+	spin_lock(&server->srv_lock);
 	if (server->tcpStatus == CifsNeedReconnect) {
 		rc = -EHOSTDOWN;
+		spin_unlock(&server->srv_lock);
 		mutex_unlock(&tcon->ses->session_mutex);
 		goto out;
 	}
+	spin_unlock(&server->srv_lock);
 
 	rc = cifs_negotiate_protocol(0, tcon->ses);
 	if (!rc && tcon->ses->need_reconnect) {
@@ -1254,10 +1272,10 @@ SMB2_sess_establish_session(struct SMB2_sess_data *sess_data)
 	mutex_unlock(&ses->server->srv_mutex);
 
 	cifs_dbg(FYI, "SMB2/3 session established successfully\n");
-	spin_lock(&GlobalMid_Lock);
+	spin_lock(&ses->ses_lock);
 	ses->status = CifsGood;
 	ses->need_reconnect = false;
-	spin_unlock(&GlobalMid_Lock);
+	spin_unlock(&ses->ses_lock);
 	return rc;
 }
 

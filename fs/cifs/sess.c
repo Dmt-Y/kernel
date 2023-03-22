@@ -668,10 +668,10 @@ sess_establish_session(struct sess_data *sess_data)
 	mutex_unlock(&ses->server->srv_mutex);
 
 	cifs_dbg(FYI, "CIFS session established successfully\n");
-	spin_lock(&GlobalMid_Lock);
+	spin_lock(&ses->ses_lock);
 	ses->status = CifsGood;
 	ses->need_reconnect = false;
-	spin_unlock(&GlobalMid_Lock);
+	spin_unlock(&ses->ses_lock);
 
 	return 0;
 }

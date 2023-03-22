@@ -149,15 +149,18 @@ cifs_reconnect_tcon(struct cifs_tcon *tcon, int smb_command)
 	 * only tree disconnect, open, and write, (and ulogoff which does not
 	 * have tcon) are allowed as we start force umount
 	 */
+	spin_lock(&tcon->tc_lock);
 	if (tcon->tidStatus == CifsExiting) {
 		if (smb_command != SMB_COM_WRITE_ANDX &&
 		    smb_command != SMB_COM_OPEN_ANDX &&
 		    smb_command != SMB_COM_TREE_DISCONNECT) {
+			spin_unlock(&tcon->tc_lock);
 			cifs_dbg(FYI, "can not send cmd %d while umounting\n",
 				 smb_command);
 			return -ENODEV;
 		}
 	}
+	spin_unlock(&tcon->tc_lock);
 
 	retries = server->nr_targets;
 
@@ -166,11 +169,13 @@ cifs_reconnect_tcon(struct cifs_tcon *tcon, int smb_command)
 	 * reconnect -- should be greater than cifs socket timeout which is 7
 	 * seconds.
 	 */
+	spin_lock(&server->srv_lock);
 	while (server->tcpStatus == CifsNeedReconnect) {
 		rc = wait_event_interruptible_timeout(server->response_q,
 						      (server->tcpStatus != CifsNeedReconnect),
 						      10 * HZ);
 		if (rc < 0) {
+			spin_unlock(&server->srv_lock);
 			cifs_dbg(FYI, "%s: aborting reconnect due to a received"
 				 " signal by the process\n", __func__);
 			return -ERESTARTSYS;
@@ -189,11 +194,13 @@ cifs_reconnect_tcon(struct cifs_tcon *tcon, int smb_command)
 		 * back on-line
 		 */
 		if (!tcon->retry) {
+			spin_unlock(&server->srv_lock);
 			cifs_dbg(FYI, "gave up waiting on reconnect in smb_init\n");
 			return -EHOSTDOWN;
 		}
 		retries = server->nr_targets;
 	}
+	spin_unlock(&server->srv_lock);
 
 	if (!ses->need_reconnect && !tcon->need_reconnect)
 		return 0;
@@ -211,11 +218,14 @@ cifs_reconnect_tcon(struct cifs_tcon *tcon, int smb_command)
 	 * and the server never sends an answer the socket will be closed
 	 * and tcpStatus set to reconnect.
 	 */
+	spin_lock(&server->srv_lock);
 	if (server->tcpStatus == CifsNeedReconnect) {
 		rc = -EHOSTDOWN;
+		spin_unlock(&server->srv_lock);
 		mutex_unlock(&ses->session_mutex);
 		goto out;
 	}
+	spin_unlock(&server->srv_lock);
 
 	rc = cifs_negotiate_protocol(0, ses);
 	if (rc == 0 && ses->need_reconnect)
