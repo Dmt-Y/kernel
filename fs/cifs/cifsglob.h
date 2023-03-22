@@ -807,6 +807,11 @@ struct TCP_Server_Info {
 #endif
 };
 
+static inline bool is_smb1(struct TCP_Server_Info *server)
+{
+	return HEADER_PREAMBLE_SIZE(server) != 0;
+}
+
 struct cifs_credits {
 	unsigned int value;
 	unsigned int instance;
