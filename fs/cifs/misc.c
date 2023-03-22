@@ -686,7 +686,7 @@ cifs_add_pending_open(struct cifs_fid *fid, struct tcon_link *tlink,
 	spin_unlock(&tlink_tcon(open->tlink)->open_file_lock);
 }
 
-/* parses DFS refferal V3 structure
+/* parses DFS referral V3 structure
  * caller is responsible for freeing target_nodes
  * returns:
  * - on success - 0
