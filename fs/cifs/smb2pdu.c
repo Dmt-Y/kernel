@@ -776,7 +776,7 @@ SMB2_negotiate(const unsigned int xid, struct cifs_ses *ses)
 	struct smb2_negotiate_rsp *rsp;
 	struct kvec iov[1];
 	struct kvec rsp_iov;
-	int rc = 0;
+	int rc;
 	int resp_buftype;
 	struct TCP_Server_Info *server = ses->server;
 	int blob_offset, blob_length;
