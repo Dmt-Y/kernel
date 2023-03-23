@@ -633,10 +633,18 @@ out_free_smb_buf:
 static void
 sess_free_buffer(struct sess_data *sess_data)
 {
+	struct kvec *iov = sess_data->iov;
 
-	free_rsp_buf(sess_data->buf0_type, sess_data->iov[0].iov_base);
+	/*
+	 * Zero the session data before freeing, as it might contain sensitive info (keys, etc).
+	 * Note that iov[1] is already freed by caller.
+	 */
+	if (sess_data->buf0_type != CIFS_NO_BUFFER && iov[0].iov_base)
+		memzero_explicit(iov[0].iov_base, iov[0].iov_len);
+
+	free_rsp_buf(sess_data->buf0_type, iov[0].iov_base);
 	sess_data->buf0_type = CIFS_NO_BUFFER;
-	kfree(sess_data->iov[2].iov_base);
+	kfree(iov[2].iov_base);
 }
 
 static int
