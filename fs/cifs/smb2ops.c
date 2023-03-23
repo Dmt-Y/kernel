@@ -4348,8 +4348,8 @@ crypt_message(struct TCP_Server_Info *server, int num_rqst,
 		return rc;
 	}
 
-	tfm = enc ? server->secmech.ccmaesencrypt :
-						server->secmech.ccmaesdecrypt;
+	tfm = enc ? server->secmech.enc : server->secmech.dec;
+
 	rc = crypto_aead_setkey(tfm, key, SMB3_SIGN_KEY_SIZE);
 	if (rc) {
 		cifs_server_dbg(VFS, "%s: Failed to set aead key %d\n", __func__, rc);
