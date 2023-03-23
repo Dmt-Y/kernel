@@ -1380,7 +1380,7 @@ SMB2_sess_auth_rawntlmssp_negotiate(struct SMB2_sess_data *sess_data)
 
 	rc = SMB2_sess_alloc_buffer(sess_data);
 	if (rc)
-		goto out_err;
+		goto out;
 
 	ntlmssp_blob = kmalloc(sizeof(struct _NEGOTIATE_MESSAGE),
 			       GFP_KERNEL);
