@@ -574,9 +574,8 @@ void cifs_aio_ctx_release(struct kref *refcount);
 int setup_aio_ctx_iter(struct cifs_aio_ctx *ctx, struct iov_iter *iter, int rw);
 void smb2_cached_lease_break(struct work_struct *work);
 
-int cifs_alloc_hash(const char *name, struct crypto_shash **shash,
-		    struct sdesc **sdesc);
-void cifs_free_hash(struct crypto_shash **shash, struct sdesc **sdesc);
+int cifs_alloc_hash(const char *name, struct shash_desc **sdesc);
+void cifs_free_hash(struct shash_desc **sdesc);
 
 extern void rqst_page_get_length(struct smb_rqst *rqst, unsigned int page,
 				unsigned int *len, unsigned int *offset);
