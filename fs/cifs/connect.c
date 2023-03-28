@@ -3156,6 +3156,9 @@ cifs_setup_ipc(struct cifs_ses *ses, struct smb_vol *volume_info)
 
 	cifs_dbg(FYI, "IPC tcon rc = %d ipc tid = %d\n", rc, tcon->tid);
 
+	spin_lock(&tcon->tc_lock);
+	tcon->tidStatus = CifsGood;
+	spin_unlock(&tcon->tc_lock);
 	ses->tcon_ipc = tcon;
 out:
 	unload_nls(nls_codepage);
@@ -3511,9 +3514,9 @@ cifs_get_smb_ses(struct TCP_Server_Info *server, struct smb_vol *volume_info)
 	list_add(&ses->smb_ses_list, &server->smb_ses_list);
 	spin_unlock(&cifs_tcp_ses_lock);
 
-	free_xid(xid);
-
 	cifs_setup_ipc(ses, volume_info);
+
+	free_xid(xid);
 
 	return ses;
 
