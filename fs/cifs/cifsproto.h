@@ -226,6 +226,8 @@ extern int cifs_read_page_from_socket(struct TCP_Server_Info *server,
 					unsigned int to_read);
 extern int cifs_setup_cifs_sb(struct smb_vol *pvolume_info,
 			       struct cifs_sb_info *cifs_sb);
+int cifs_mount_get_session(struct cifs_mount_ctx *mnt_ctx);
+int cifs_mount_get_tcon(struct cifs_mount_ctx *mnt_ctx);
 extern int cifs_match_super(struct super_block *, void *);
 extern void cifs_cleanup_volume_info(struct smb_vol *pvolume_info);
 extern struct smb_vol *cifs_get_volume_info(char *mount_data,
