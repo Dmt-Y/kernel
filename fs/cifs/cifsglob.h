@@ -1353,6 +1353,7 @@ struct cifs_io_parms {
 	__u64 offset;
 	unsigned int length;
 	struct cifs_tcon *tcon;
+	struct TCP_Server_Info *server;
 };
 
 struct cifs_aio_ctx {
