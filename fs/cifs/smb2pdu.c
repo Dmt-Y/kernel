@@ -504,8 +504,9 @@ static void
 assemble_neg_contexts(struct smb2_negotiate_req *req,
 		      struct TCP_Server_Info *server, unsigned int *total_len)
 {
-	char *pneg_ctxt;
 	unsigned int ctxt_len;
+	char *pneg_ctxt;
+	char *hostname;
 
 	if (*total_len > 200) {
 		/* In case length corrupted don't want to overrun smb buffer */
@@ -542,8 +543,11 @@ assemble_neg_contexts(struct smb2_negotiate_req *req,
 	} else
 		req->NegotiateContextCount = cpu_to_le16(4);
 
+	mutex_lock(&server->srv_mutex);
+	hostname = server->hostname;
 	ctxt_len = build_netname_ctxt((struct smb2_netname_neg_context *)pneg_ctxt,
-					server->hostname);
+				      hostname);
+	mutex_unlock(&server->srv_mutex);
 	*total_len += ctxt_len;
 	pneg_ctxt += ctxt_len;
 
