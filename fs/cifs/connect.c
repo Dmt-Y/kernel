@@ -5749,8 +5749,8 @@ static int update_server_fullpath(struct TCP_Server_Info *server, struct cifs_sb
 	return rc;
 }
 
-static int target_share_matches_server(struct TCP_Server_Info *server, const char *tcp_host,
-				       size_t tcp_host_len, char *share, bool *target_match)
+static int target_share_matches_server(struct TCP_Server_Info *server, char *share,
+				       bool *target_match)
 {
 	int rc = 0;
 	const char *dfs_host;
@@ -5759,14 +5759,16 @@ static int target_share_matches_server(struct TCP_Server_Info *server, const cha
 	*target_match = true;
 	extract_unc_hostname(share, &dfs_host, &dfs_host_len);
 
-	/* Check if hostnames or addresses match */
-	if (dfs_host_len != tcp_host_len || strncasecmp(dfs_host, tcp_host, dfs_host_len) != 0) {
-		cifs_dbg(FYI, "%s: %.*s doesn't match %.*s\n", __func__, (int)dfs_host_len,
-			 dfs_host, (int)tcp_host_len, tcp_host);
+	mutex_lock(&server->srv_mutex);
+	if (dfs_host_len != strlen(server->hostname) ||
+	    strncasecmp(dfs_host, server->hostname, dfs_host_len)) {
+		cifs_dbg(FYI, "%s: %.*s doesn't match %s\n", __func__,
+			 (int)dfs_host_len, dfs_host, server->hostname);
 		rc = match_target_ip(server, dfs_host, dfs_host_len, target_match);
 		if (rc)
 			cifs_dbg(VFS, "%s: failed to match target ip: %d\n", __func__, rc);
 	}
+	mutex_unlock(&server->srv_mutex);
 	return rc;
 }
 
@@ -5779,12 +5781,8 @@ static int __tree_connect_dfs_target(const unsigned int xid, struct cifs_tcon *t
 	const struct smb_version_operations *ops = server->ops;
 	struct cifs_tcon *ipc = tcon->ses->tcon_ipc;
 	char *share = NULL, *prefix = NULL;
-	const char *tcp_host;
-	size_t tcp_host_len;
 	struct dfs_cache_tgt_iterator *tit;
 	bool target_match;
-
-	extract_unc_hostname(server->hostname, &tcp_host, &tcp_host_len);
 
 	tit = dfs_cache_get_tgt_iterator(tl);
 	if (!tit) {
@@ -5808,8 +5806,7 @@ static int __tree_connect_dfs_target(const unsigned int xid, struct cifs_tcon *t
 			break;
 		}
 
-		rc = target_share_matches_server(server, tcp_host, tcp_host_len, share,
-						 &target_match);
+		rc = target_share_matches_server(server, share, &target_match);
 		if (rc)
 			break;
 		if (!target_match) {
@@ -5905,7 +5902,9 @@ int cifs_tree_connect(const unsigned int xid, struct cifs_tcon *tcon, const stru
 		return -ENOMEM;
 
 	if (tcon->ipc) {
+		mutex_lock(&server->srv_mutex);
 		scnprintf(tree, MAX_TREE_SIZE, "\\\\%s\\IPC$", server->hostname);
+		mutex_unlock(&server->srv_mutex);
 		rc = ops->tree_connect(xid, tcon->ses, tree, tcon, nlsc);
 		goto out;
 	}
