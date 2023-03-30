@@ -22,7 +22,6 @@
 #include <linux/fs.h>
 #include <linux/string.h>
 #include <linux/ctype.h>
-#include <linux/kstrtox.h>
 #include <linux/module.h>
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
@@ -426,8 +425,10 @@ skip_rdma:
 
 			spin_lock(&ses->iface_lock);
 			if (ses->iface_count)
-				seq_printf(m, "\n\tServer interfaces: %zu\n",
-					   ses->iface_count);
+				seq_printf(m, "\n\n\tServer interfaces: %zu"
+					   "\tLast updated: %lu seconds ago",
+					   ses->iface_count,
+					   (jiffies - ses->iface_last_update) / HZ);
 			for (j = 0; j < ses->iface_count; j++) {
 				seq_printf(m, "\t%d)", j);
 				cifs_dump_iface(m, &ses->iface_list[j]);
