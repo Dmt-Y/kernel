@@ -2522,7 +2522,8 @@ static void queue_rescan_worker(struct btrfs_fs_info *fs_info)
 }
 
 /*
- * called from commit_transaction. Writes all changed qgroups to disk.
+ * Writes all changed qgroups to disk.
+ * Called by the transaction commit path and the qgroup assign ioctl.
  */
 int btrfs_run_qgroups(struct btrfs_trans_handle *trans,
 		      struct btrfs_fs_info *fs_info)
@@ -2530,6 +2531,14 @@ int btrfs_run_qgroups(struct btrfs_trans_handle *trans,
 	struct btrfs_root *quota_root = fs_info->quota_root;
 	int ret = 0;
 	int start_rescan_worker = 0;
+
+	/*
+	 * In case we are called from the qgroup assign ioctl, assert that we
+	 * are holding the qgroup_ioctl_lock, otherwise we can race with a quota
+	 * disable operation (ioctl) and access a freed quota root.
+	 */
+	if (trans->transaction->state != TRANS_STATE_COMMIT_DOING)
+		lockdep_assert_held(&fs_info->qgroup_ioctl_lock);
 
 	if (!quota_root)
 		goto out;
