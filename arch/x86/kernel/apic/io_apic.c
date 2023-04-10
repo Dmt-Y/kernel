@@ -1281,8 +1281,9 @@ static void io_apic_print_entries(unsigned int apic, unsigned int nr_entries)
 			printk(KERN_DEBUG "%s, %s, D(%02X%02X), M(%1d)\n",
 			       buf,
 			       entry.dest_mode == IOAPIC_DEST_MODE_LOGICAL ?
-			       "logical " : "physical", entry.ext_dest,
-			       entry.dest, entry.delivery_mode);
+			       "logical " : "physical",
+			       entry.virt_destid_8_14, entry.dest,
+			       entry.delivery_mode);
 	}
 }
 
@@ -1457,8 +1458,8 @@ void native_disable_io_apic(void)
 		entry.polarity		= IOAPIC_POL_HIGH;
 		entry.dest_mode		= IOAPIC_DEST_MODE_PHYSICAL;
 		entry.delivery_mode	= dest_ExtINT;
-		entry.dest		= apic_id & 0xff;
-		entry.ext_dest		= apic_id >> 8;
+		entry.dest		= apic_id & 0xFF;
+		entry.virt_destid_8_14	= apic_id >> 8;
 
 		/*
 		 * Add it to the IO-APIC irq-routing table:
@@ -1727,7 +1728,7 @@ static bool io_apic_level_ack_pending(struct mp_chip_data *data)
 
 static inline bool ioapic_prepare_move(struct irq_data *data)
 {
-	/* If we are moving the irq we need to mask it */
+	/* If we are moving the IRQ we need to mask it */
 	if (unlikely(irqd_is_setaffinity_pending(data))) {
 		if (!irqd_irq_masked(data))
 			mask_ioapic_irq(data);
@@ -1767,7 +1768,7 @@ static inline void ioapic_finish_move(struct irq_data *data, bool moveit)
 		 */
 		if (!io_apic_level_ack_pending(data->chip_data))
 			irq_move_masked_irq(data);
-		/* If the irq is masked in the core, leave it */
+		/* If the IRQ is masked in the core, leave it: */
 		if (!irqd_irq_masked(data))
 			unmask_ioapic_irq(data);
 	}
@@ -1876,8 +1877,8 @@ static int ioapic_set_affinity(struct irq_data *irq_data,
 	raw_spin_lock_irqsave(&ioapic_lock, flags);
 	if (ret >= 0 && ret != IRQ_SET_MASK_OK_DONE) {
 		cfg = irqd_cfg(irq_data);
-		data->entry.dest = cfg->dest_apicid & 0xff;
-		data->entry.ext_dest = cfg->dest_apicid >> 8;
+		data->entry.dest = cfg->dest_apicid & 0xFF;
+		data->entry.virt_destid_8_14 = cfg->dest_apicid >> 8;
 		data->entry.vector = cfg->vector;
 		for_each_irq_pin(entry, data->irq_2_pin)
 			__ioapic_write_entry(entry->apic, entry->pin,
@@ -1897,7 +1898,8 @@ static struct irq_chip ioapic_chip __read_mostly = {
 	.irq_eoi		= ioapic_ack_level,
 	.irq_set_affinity	= ioapic_set_affinity,
 	.irq_retrigger		= irq_chip_retrigger_hierarchy,
-	.flags			= IRQCHIP_SKIP_SET_WAKE,
+	.flags			= IRQCHIP_SKIP_SET_WAKE |
+				  IRQCHIP_AFFINITY_PRE_STARTUP,
 };
 
 static struct irq_chip ioapic_ir_chip __read_mostly = {
@@ -1909,7 +1911,8 @@ static struct irq_chip ioapic_ir_chip __read_mostly = {
 	.irq_eoi		= ioapic_ir_ack_level,
 	.irq_set_affinity	= ioapic_set_affinity,
 	.irq_retrigger		= irq_chip_retrigger_hierarchy,
-	.flags			= IRQCHIP_SKIP_SET_WAKE,
+	.flags			= IRQCHIP_SKIP_SET_WAKE |
+				  IRQCHIP_AFFINITY_PRE_STARTUP,
 };
 
 static inline void init_IO_APIC_traps(void)
@@ -2006,8 +2009,8 @@ static inline void __init unlock_ExtINT_logic(void)
 
 	entry1.dest_mode = IOAPIC_DEST_MODE_PHYSICAL;
 	entry1.mask = IOAPIC_UNMASKED;
-	entry1.dest = apic_id & 0xff;
-	entry1.ext_dest = apic_id >> 8;
+	entry1.dest = apic_id & 0xFF;
+	entry1.virt_destid_8_14 = apic_id >> 8;
 	entry1.delivery_mode = dest_ExtINT;
 	entry1.polarity = entry0.polarity;
 	entry1.trigger = IOAPIC_EDGE;
@@ -2368,7 +2371,13 @@ unsigned int arch_dynirq_lower_bound(unsigned int from)
 	 * dmar_alloc_hwirq() may be called before setup_IO_APIC(), so use
 	 * gsi_top if ioapic_dynirq_base hasn't been initialized yet.
 	 */
-	return ioapic_initialized ? ioapic_dynirq_base : gsi_top;
+	if (!ioapic_initialized)
+		return gsi_top;
+	/*
+	 * For DT enabled machines ioapic_dynirq_base is irrelevant and not
+	 * updated. So simply return @from if ioapic_dynirq_base == 0.
+	 */
+	return ioapic_dynirq_base ? : from;
 }
 
 #ifdef CONFIG_X86_32
@@ -2915,8 +2924,8 @@ static void mp_setup_entry(struct irq_cfg *cfg, struct mp_chip_data *data,
 	memset(entry, 0, sizeof(*entry));
 	entry->delivery_mode = apic->irq_delivery_mode;
 	entry->dest_mode     = apic->irq_dest_mode;
-	entry->dest	     = cfg->dest_apicid & 0xff;
-	entry->ext_dest	     = cfg->dest_apicid >> 8;
+	entry->dest	     = cfg->dest_apicid & 0xFF;
+	entry->virt_destid_8_14 = cfg->dest_apicid >> 8;
 	entry->vector	     = cfg->vector;
 	entry->trigger	     = data->trigger;
 	entry->polarity	     = data->polarity;
