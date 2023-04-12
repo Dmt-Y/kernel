@@ -226,18 +226,19 @@ static inline int is_gcr_valid(u32 offset)
 int intel_pmc_gcr_read(u32 offset, u32 *data)
 {
 	int ret;
+	unsigned long flags;
 
-	spin_lock(&ipcdev.gcr_lock);
+	spin_lock_irqsave(&ipcdev.gcr_lock, flags);
 
 	ret = is_gcr_valid(offset);
 	if (ret < 0) {
-		spin_unlock(&ipcdev.gcr_lock);
+		spin_unlock_irqrestore(&ipcdev.gcr_lock, flags);
 		return ret;
 	}
 
 	*data = readl(ipcdev.gcr_mem_base + offset);
 
-	spin_unlock(&ipcdev.gcr_lock);
+	spin_unlock_irqrestore(&ipcdev.gcr_lock, flags);
 
 	return 0;
 }
@@ -256,18 +257,19 @@ EXPORT_SYMBOL_GPL(intel_pmc_gcr_read);
 int intel_pmc_gcr_write(u32 offset, u32 data)
 {
 	int ret;
+	unsigned long flags;
 
-	spin_lock(&ipcdev.gcr_lock);
+	spin_lock_irqsave(&ipcdev.gcr_lock, flags);
 
 	ret = is_gcr_valid(offset);
 	if (ret < 0) {
-		spin_unlock(&ipcdev.gcr_lock);
+		spin_unlock_irqrestore(&ipcdev.gcr_lock, flags);
 		return ret;
 	}
 
 	writel(data, ipcdev.gcr_mem_base + offset);
 
-	spin_unlock(&ipcdev.gcr_lock);
+	spin_unlock_irqrestore(&ipcdev.gcr_lock, flags);
 
 	return 0;
 }
@@ -288,8 +290,9 @@ int intel_pmc_gcr_update(u32 offset, u32 mask, u32 val)
 {
 	u32 new_val;
 	int ret = 0;
+	unsigned long flags;
 
-	spin_lock(&ipcdev.gcr_lock);
+	spin_lock_irqsave(&ipcdev.gcr_lock, flags);
 
 	ret = is_gcr_valid(offset);
 	if (ret < 0)
@@ -311,7 +314,7 @@ int intel_pmc_gcr_update(u32 offset, u32 mask, u32 val)
 	}
 
 gcr_ipc_unlock:
-	spin_unlock(&ipcdev.gcr_lock);
+	spin_unlock_irqrestore(&ipcdev.gcr_lock, flags);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(intel_pmc_gcr_update);
