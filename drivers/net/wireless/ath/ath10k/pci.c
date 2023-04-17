@@ -3630,18 +3630,21 @@ static int ath10k_pci_probe(struct pci_dev *pdev,
 	ret = ath10k_pci_chip_reset(ar);
 	if (ret) {
 		ath10k_err(ar, "failed to reset chip: %d\n", ret);
+		ret = -ENODEV;
 		goto err_free_irq;
 	}
 
 	chip_id = ath10k_pci_soc_read32(ar, SOC_CHIP_ID_ADDRESS);
 	if (chip_id == 0xffffffff) {
 		ath10k_err(ar, "failed to get chip id\n");
+		ret = -ENODEV;
 		goto err_free_irq;
 	}
 
 	if (!ath10k_pci_chip_is_supported(pdev->device, chip_id)) {
 		ath10k_err(ar, "device %04x with chip_id %08x isn't supported\n",
 			   pdev->device, chip_id);
+		ret = -ENODEV;
 		goto err_free_irq;
 	}
 
