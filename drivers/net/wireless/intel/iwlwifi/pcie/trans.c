@@ -2133,6 +2133,7 @@ static int iwl_trans_pcie_read_mem(struct iwl_trans *trans, u32 addr,
 	u32 *vals = buf;
 
 	while (offs < dwords) {
+		bool resched = false;
 		/* limit the time we spin here under lock to 1/2s */
 		ktime_t timeout = ktime_add_us(ktime_get(), 500 * USEC_PER_MSEC);
 
@@ -2149,10 +2150,14 @@ static int iwl_trans_pcie_read_mem(struct iwl_trans *trans, u32 addr,
 				 * do it once in 128 reads
 				 */
 				if (offs % 128 == 0 && ktime_after(ktime_get(),
-								   timeout))
+								   timeout)) {
+					resched = true;
 					break;
+				}
 			}
 			iwl_trans_release_nic_access(trans, &flags);
+			if (resched)
+				cond_resched();
 		} else {
 			return -EBUSY;
 		}
