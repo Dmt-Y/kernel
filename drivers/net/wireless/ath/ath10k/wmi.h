@@ -6713,9 +6713,11 @@ struct wmi_svc_rdy_ev_arg {
 };
 
 struct wmi_svc_avail_ev_arg {
-	bool service_map_ext_valid;
 	__le32 service_map_ext_len;
 	const __le32 *service_map_ext;
+#ifndef __GENKSYMS__
+	bool service_map_ext_valid;
+#endif
 };
 
 struct wmi_rdy_ev_arg {
