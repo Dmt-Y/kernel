@@ -21,7 +21,9 @@
  */
 
 #include <linux/pci.h>
+#ifndef __GENKSYMS__
 #include <linux/iommu.h>
+#endif
 #include <linux/iopoll.h>
 #include <linux/irq.h>
 #include <linux/log2.h>
