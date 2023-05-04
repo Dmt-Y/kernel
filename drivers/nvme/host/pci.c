@@ -2258,8 +2258,11 @@ static void nvme_reset_work(struct work_struct *work)
 	int result = -ENODEV;
 	enum nvme_ctrl_state new_state = NVME_CTRL_LIVE;
 
-	if (WARN_ON(dev->ctrl.state != NVME_CTRL_RESETTING))
+	if (dev->ctrl.state != NVME_CTRL_RESETTING) {
+		dev_warn(dev->ctrl.device, "ctrl state %d is not RESETTING\n",
+			 dev->ctrl.state);
 		goto out;
+	}
 
 	/*
 	 * If we're called to reset a live controller first shut it down before
