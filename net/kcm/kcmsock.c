@@ -1389,15 +1389,23 @@ static int kcm_attach(struct socket *sock, struct socket *csock,
 
 	lock_sock(csk);
 
-	/* We must prevent loops or risk deadlock ! */
-	if (csk->sk_family == PF_KCM) {
-		err = -EOPNOTSUPP;
+	/* Only allow TCP sockets to be attached for now */
+	if ((csk->sk_family != AF_INET && csk->sk_family != AF_INET6) ||
+	    csk->sk_protocol != IPPROTO_TCP) {
+		return -EOPNOTSUPP;
 		goto out;
 	}
 
+	/* Don't allow listeners or closed sockets */
+	if (csk->sk_state == TCP_LISTEN || csk->sk_state == TCP_CLOSE) {
+		return -EOPNOTSUPP;
+		goto out;
+	}
+
+
 	psock = kmem_cache_zalloc(kcm_psockp, GFP_KERNEL);
 	if (!psock) {
-		err = -ENOMEM;
+		return -ENOMEM;
 		goto out;
 	}
 
