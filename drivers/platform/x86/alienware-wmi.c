@@ -605,7 +605,7 @@ static struct attribute *hdmi_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group hdmi_attribute_group = {
+static const struct attribute_group hdmi_attribute_group = {
 	.name = "hdmi",
 	.attrs = hdmi_attrs,
 };
@@ -661,7 +661,7 @@ static struct attribute *amplifier_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group amplifier_attribute_group = {
+static const struct attribute_group amplifier_attribute_group = {
 	.name = "amplifier",
 	.attrs = amplifier_attrs,
 };
@@ -742,7 +742,7 @@ static struct attribute *deepsleep_attrs[] = {
 	NULL,
 };
 
-static struct attribute_group deepsleep_attribute_group = {
+static const struct attribute_group deepsleep_attribute_group = {
 	.name = "deepsleep",
 	.attrs = deepsleep_attrs,
 };
