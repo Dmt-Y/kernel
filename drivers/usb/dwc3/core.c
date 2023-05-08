@@ -118,17 +118,22 @@ static void __dwc3_set_mode(struct work_struct *work)
 	struct dwc3 *dwc = work_to_dwc(work);
 	unsigned long flags;
 	int ret;
+	u32 desired_dr_role;
 
-	if (!dwc->desired_dr_role)
+	spin_lock_irqsave(&dwc->lock, flags);
+	desired_dr_role = dwc->desired_dr_role;
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	if (!desired_dr_role)
 		return;
 
-	if (dwc->desired_dr_role == dwc->current_dr_role)
+	if (desired_dr_role == dwc->current_dr_role)
 		return;
 
 	if (dwc->dr_mode != USB_DR_MODE_OTG)
 		return;
 
-	if (dwc->desired_dr_role == DWC3_GCTL_PRTCAP_OTG)
+	if (desired_dr_role == DWC3_GCTL_PRTCAP_OTG)
 		return;
 
 	switch (dwc->current_dr_role) {
@@ -145,13 +150,13 @@ static void __dwc3_set_mode(struct work_struct *work)
 
 	spin_lock_irqsave(&dwc->lock, flags);
 
-	dwc3_set_prtcap(dwc, dwc->desired_dr_role);
+	dwc3_set_prtcap(dwc, desired_dr_role);
 
-	dwc->current_dr_role = dwc->desired_dr_role;
+	dwc->current_dr_role = desired_dr_role;
 
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
-	switch (dwc->desired_dr_role) {
+	switch (desired_dr_role) {
 	case DWC3_GCTL_PRTCAP_HOST:
 		ret = dwc3_host_init(dwc);
 		if (ret)
