@@ -1798,12 +1798,16 @@ static struct worker *create_worker(struct worker_pool *pool)
 
 	/* ID is needed to determine kthread name */
 	id = ida_simple_get(&pool->worker_ida, 0, 0, GFP_KERNEL);
-	if (id < 0)
+	if (id < 0) {
+		pr_err_once("workqueue: Failed to allocate a worker ID: %d\n", id);
 		goto fail;
+	}
 
 	worker = alloc_worker(pool->node);
-	if (!worker)
+	if (!worker) {
+		pr_err_once("workqueue: Failed to allocate a worker\n");
 		goto fail;
+	}
 
 	worker->pool = pool;
 	worker->id = id;
@@ -1816,8 +1820,11 @@ static struct worker *create_worker(struct worker_pool *pool)
 
 	worker->task = kthread_create_on_node(worker_thread, worker, pool->node,
 					      "kworker/%s", id_buf);
-	if (IS_ERR(worker->task))
+	if (IS_ERR(worker->task)) {
+		pr_err_once("workqueue: Failed to create a worker thread: %ld",
+			    PTR_ERR(worker->task));
 		goto fail;
+	}
 
 	set_user_nice(worker->task, pool->attrs->nice);
 	kthread_bind_mask(worker->task, pool->attrs->cpumask);
