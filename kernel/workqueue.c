@@ -4074,13 +4074,18 @@ struct workqueue_struct *__alloc_workqueue_key(const char *fmt,
 		struct worker *rescuer;
 
 		rescuer = alloc_worker(NUMA_NO_NODE);
-		if (!rescuer)
+		if (!rescuer) {
+			pr_err("workqueue: Failed to allocate a rescuer for wq \"%s\"\n",
+			       wq->name);
 			goto err_destroy;
+		}
 
 		rescuer->rescue_wq = wq;
 		rescuer->task = kthread_create(rescuer_thread, rescuer, "%s",
 					       wq->name);
 		if (IS_ERR(rescuer->task)) {
+			pr_err("workqueue: Failed to create a rescuer kthread for wq \"%s\": %ld",
+			       wq->name, PTR_ERR(rescuer->task));
 			kfree(rescuer);
 			goto err_destroy;
 		}
