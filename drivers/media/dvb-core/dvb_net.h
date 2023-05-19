@@ -37,7 +37,6 @@ struct dvb_net {
 	unsigned int exit:1;
 	struct dmx_demux *demux;
 	struct mutex ioctl_mutex;
-	struct mutex remove_mutex;
 };
 
 void dvb_net_release(struct dvb_net *);

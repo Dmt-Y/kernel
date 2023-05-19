@@ -67,6 +67,8 @@
 #include "dvb_demux.h"
 #include "dvb_net.h"
 
+static DEFINE_MUTEX(remove_mutex);
+
 static inline __u32 iov_crc32( __u32 c, struct kvec *iov, unsigned int cnt )
 {
 	unsigned int j;
@@ -1574,17 +1576,17 @@ static int locked_dvb_net_open(struct inode *inode, struct file *file)
 	struct dvb_net *dvbnet = dvbdev->priv;
 	int ret;
 
-	if (mutex_lock_interruptible(&dvbnet->remove_mutex))
+	if (mutex_lock_interruptible(&remove_mutex))
 		return -ERESTARTSYS;
 
 	if (dvbnet->exit) {
-		mutex_unlock(&dvbnet->remove_mutex);
+		mutex_unlock(&remove_mutex);
 		return -ENODEV;
 	}
 
 	ret = dvb_generic_open(inode, file);
 
-	mutex_unlock(&dvbnet->remove_mutex);
+	mutex_unlock(&remove_mutex);
 
 	return ret;
 }
@@ -1594,15 +1596,15 @@ static int dvb_net_close(struct inode *inode, struct file *file)
 	struct dvb_device *dvbdev = file->private_data;
 	struct dvb_net *dvbnet = dvbdev->priv;
 
-	mutex_lock(&dvbnet->remove_mutex);
+	mutex_lock(&remove_mutex);
 
 	dvb_generic_release(inode, file);
 
 	if (dvbdev->users == 1 && dvbnet->exit == 1) {
-		mutex_unlock(&dvbnet->remove_mutex);
+		mutex_unlock(&remove_mutex);
 		wake_up(&dvbdev->wait_queue);
 	} else {
-		mutex_unlock(&dvbnet->remove_mutex);
+		mutex_unlock(&remove_mutex);
 	}
 
 	return 0;
@@ -1631,9 +1633,9 @@ void dvb_net_release (struct dvb_net *dvbnet)
 {
 	int i;
 
-	mutex_lock(&dvbnet->remove_mutex);
+	mutex_lock(&remove_mutex);
 	dvbnet->exit = 1;
-	mutex_unlock(&dvbnet->remove_mutex);
+	mutex_unlock(&remove_mutex);
 
 	if (dvbnet->dvbdev->users < 1)
 		wait_event(dvbnet->dvbdev->wait_queue,
@@ -1656,7 +1658,6 @@ int dvb_net_init (struct dvb_adapter *adap, struct dvb_net *dvbnet,
 	int i;
 
 	mutex_init(&dvbnet->ioctl_mutex);
-	mutex_init(&dvbnet->remove_mutex);
 	dvbnet->demux = dmx;
 
 	for (i=0; i<DVB_NET_DEVICES_MAX; i++)
