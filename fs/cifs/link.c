@@ -469,12 +469,13 @@ smb3_create_mf_symlink(unsigned int xid, struct cifs_tcon *tcon,
 
 	oparms = (struct cifs_open_parms) {
 		.tcon = tcon,
-			.cifs_sb = cifs_sb,
-			.desired_access = GENERIC_WRITE,
-			.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR),
-			.disposition = FILE_CREATE,
-			.fid = &fid,
-			.mode = 0644,
+		.cifs_sb = cifs_sb,
+		.desired_access = GENERIC_WRITE,
+		.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR),
+		.disposition = FILE_CREATE,
+		.fid = &fid,
+		.reconnect = false,
+		.mode = 0644,
 	};
 
 	rc = SMB2_open(xid, &oparms, utf16_path, &oplock, NULL, NULL,
