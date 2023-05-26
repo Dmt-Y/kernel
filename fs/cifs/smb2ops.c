@@ -3783,17 +3783,21 @@ static long smb3_insert_range(struct file *file, struct cifs_tcon *tcon,
 	unsigned int xid;
 	struct cifsFileInfo *cfile = file->private_data;
 	__le64 eof;
-	__u64  count;
+	__u64  count, old_eof;
 
 	xid = get_xid();
 
-	if (off >= i_size_read(file->f_inode)) {
+	inode_lock(file->f_inode);
+
+	old_eof = i_size_read(file->f_inode);
+
+	if (off >= old_eof) {
 		rc = -EINVAL;
 		goto out;
 	}
 
-	count = i_size_read(file->f_inode) - off;
-	eof = cpu_to_le64(i_size_read(file->f_inode) + len);
+	count = old_eof - off;
+	eof = cpu_to_le64(old_eof + len);
 
 	rc = SMB2_set_eof(xid, tcon, cfile->fid.persistent_fid,
 			  cfile->fid.volatile_fid, cfile->pid, &eof);
@@ -3810,6 +3814,7 @@ static long smb3_insert_range(struct file *file, struct cifs_tcon *tcon,
 
 	rc = 0;
  out:
+	inode_unlock(file->f_inode);
 	free_xid(xid);
 	return rc;
 }
