@@ -3750,21 +3750,24 @@ static long smb3_collapse_range(struct file *file, struct cifs_tcon *tcon,
 	unsigned int xid;
 	struct cifsFileInfo *cfile = file->private_data;
 	__le64 eof;
+	loff_t old_eof;
 
 	xid = get_xid();
+	inode_lock(file->f_inode);
 
-	if (off >= i_size_read(file->f_inode) ||
-	    off + len >= i_size_read(file->f_inode)) {
+	old_eof = i_size_read(file->f_inode);
+	if (off >= old_eof ||
+	    off + len >= old_eof) {
 		rc = -EINVAL;
 		goto out;
 	}
 
 	rc = smb2_copychunk_range(xid, cfile, cfile, off + len,
-				  i_size_read(file->f_inode) - off - len, off);
+				  old_eof - off - len, off);
 	if (rc < 0)
 		goto out;
 
-	eof = cpu_to_le64(i_size_read(file->f_inode) - len);
+	eof = cpu_to_le64(old_eof - len);
 	rc = SMB2_set_eof(xid, tcon, cfile->fid.persistent_fid,
 			  cfile->fid.volatile_fid, cfile->pid, &eof);
 	if (rc < 0)
@@ -3772,6 +3775,7 @@ static long smb3_collapse_range(struct file *file, struct cifs_tcon *tcon,
 
 	rc = 0;
  out:
+	inode_unlock(file->f_inode);
 	free_xid(xid);
 	return rc;
 }
