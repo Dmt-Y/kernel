@@ -77,10 +77,6 @@
 #define SMB_ECHO_INTERVAL_MAX 600
 #define SMB_ECHO_INTERVAL_DEFAULT 60
 
-/* dns resolution intervals in seconds */
-#define SMB_DNS_RESOLVE_INTERVAL_MIN     120
-#define SMB_DNS_RESOLVE_INTERVAL_DEFAULT 600
-
 /* smb multichannel query server interfaces interval in seconds */
 #define SMB_INTERFACE_POLL_INTERVAL	600
 
@@ -694,7 +690,6 @@ struct TCP_Server_Info {
 	/* point to the SMBD connection if RDMA is used instead of socket */
 	struct smbd_connection *smbd_conn;
 	struct delayed_work	echo; /* echo ping workqueue job */
-	struct delayed_work	resolve; /* dns resolution workqueue job */
 	char	*smallbuf;	/* pointer to current "small" buffer */
 	char	*bigbuf;	/* pointer to current "big" buffer */
 	/* Total size of this PDU. Only valid from cifs_demultiplex_thread */
@@ -1242,6 +1237,7 @@ struct cifs_tcon {
 	/* BB add field for back pointer to sb struct(s)? */
 #ifdef CONFIG_CIFS_DFS_UPCALL
 	struct list_head ulist; /* cache update list */
+	struct list_head dfs_ses_list;
 #endif
 	struct delayed_work	query_interfaces; /* query interfaces workqueue job */
 };
@@ -1774,9 +1770,8 @@ struct cifs_mount_ctx {
 	struct TCP_Server_Info *server;
 	struct cifs_ses *ses;
 	struct cifs_tcon *tcon;
-	struct cifs_ses *root_ses;
-	uuid_t mount_id;
 	char *origin_fullpath, *leaf_fullpath;
+	struct list_head dfs_ses_list;
 };
 
 static inline void free_dfs_info_param(struct dfs_info3_param *param)
@@ -2194,6 +2189,12 @@ static inline unsigned int cifs_get_num_sgs(const struct smb_rqst *rqst,
 	unsigned long addr;
 	int i, j;
 
+	/*
+	 * The first rqst has a transform header where the first 20 bytes are
+	 * not part of the encrypted blob.
+	 */
+	skip = 20;
+
 	/* Assumes the first rqst has a transform header as the first iov.
 	 * I.e.
 	 * rqst[0].rq_iov[0]  is transform header
@@ -2201,14 +2202,9 @@ static inline unsigned int cifs_get_num_sgs(const struct smb_rqst *rqst,
 	 * rqst[1+].rq_iov[0+] data to be encrypted/decrypted
 	 */
 	for (i = 0; i < num_rqst; i++) {
-		/*
-		 * The first rqst has a transform header where the
-		 * first 20 bytes are not part of the encrypted blob.
-		 */
 		for (j = 0; j < rqst[i].rq_nvec; j++) {
 			struct kvec *iov = &rqst[i].rq_iov[j];
 
-			skip = (i == 0) && (j == 0) ? 20 : 0;
 			addr = (unsigned long)iov->iov_base + skip;
 			if (unlikely(is_vmalloc_addr((void *)addr))) {
 				len = iov->iov_len - skip;
@@ -2217,6 +2213,7 @@ static inline unsigned int cifs_get_num_sgs(const struct smb_rqst *rqst,
 			} else {
 				nents++;
 			}
+			skip = 0;
 		}
 		nents += rqst[i].rq_npages;
 	}
