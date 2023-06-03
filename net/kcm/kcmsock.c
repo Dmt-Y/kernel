@@ -1419,9 +1419,18 @@ static int kcm_attach(struct socket *sock, struct socket *csock,
 		goto out;
 	}
 
-	sock_hold(csk);
-
 	write_lock_bh(&csk->sk_callback_lock);
+
+	/* Check if sk_user_data is aready by KCM or someone else.
+	 * Must be done under lock to prevent race conditions.
+	 */
+	if (csk->sk_user_data) {
+		write_unlock_bh(&csk->sk_callback_lock);
+		strp_done(&psock->strp);
+		kmem_cache_free(kcm_psockp, psock);
+		return -EALREADY;
+	}
+
 	psock->save_data_ready = csk->sk_data_ready;
 	psock->save_write_space = csk->sk_write_space;
 	psock->save_state_change = csk->sk_state_change;
@@ -1429,7 +1438,10 @@ static int kcm_attach(struct socket *sock, struct socket *csock,
 	csk->sk_data_ready = psock_data_ready;
 	csk->sk_write_space = psock_write_space;
 	csk->sk_state_change = psock_state_change;
+
 	write_unlock_bh(&csk->sk_callback_lock);
+
+	sock_hold(csk);
 
 	/* Finished initialization, now add the psock to the MUX. */
 	spin_lock_bh(&mux->lock);
@@ -1643,60 +1655,36 @@ static struct proto kcm_proto = {
 };
 
 /* Clone a kcm socket. */
-static int kcm_clone(struct socket *osock, struct kcm_clone *info,
-		     struct socket **newsockp)
+static struct file *kcm_clone(struct socket *osock)
 {
 	struct socket *newsock;
 	struct sock *newsk;
-	struct file *newfile;
-	int err, newfd;
+	struct file *file;
 
-	err = -ENFILE;
 	newsock = sock_alloc();
 	if (!newsock)
-		goto out;
+		return ERR_PTR(-ENFILE);
 
 	newsock->type = osock->type;
 	newsock->ops = osock->ops;
 
 	__module_get(newsock->ops->owner);
 
-	newfd = get_unused_fd_flags(0);
-	if (unlikely(newfd < 0)) {
-		err = newfd;
-		goto out_fd_fail;
-	}
-
-	newfile = sock_alloc_file(newsock, 0, osock->sk->sk_prot_creator->name);
-	if (unlikely(IS_ERR(newfile))) {
-		err = PTR_ERR(newfile);
-		goto out_sock_alloc_fail;
-	}
-
 	newsk = sk_alloc(sock_net(osock->sk), PF_KCM, GFP_KERNEL,
 			 &kcm_proto, false);
 	if (!newsk) {
-		err = -ENOMEM;
-		goto out_sk_alloc_fail;
+		sock_release(newsock);
+		return ERR_PTR(-ENOMEM);
 	}
 
 	sock_init_data(newsock, newsk);
 	init_kcm_sock(kcm_sk(newsk), kcm_sk(osock->sk)->mux);
 
-	fd_install(newfd, newfile);
-	*newsockp = newsock;
-	info->fd = newfd;
+	file = sock_alloc_file(newsock, 0, osock->sk->sk_prot_creator->name);
+	if (IS_ERR(file))
+		sock_release(newsock);
 
-	return 0;
-
-out_sk_alloc_fail:
-	fput(newfile);
-out_sock_alloc_fail:
-	put_unused_fd(newfd);
-out_fd_fail:
-	sock_release(newsock);
-out:
-	return err;
+	return file;
 }
 
 static int kcm_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
@@ -1726,17 +1714,25 @@ static int kcm_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	}
 	case SIOCKCMCLONE: {
 		struct kcm_clone info;
-		struct socket *newsock = NULL;
+		struct file *file;
 
-		err = kcm_clone(sock, &info, &newsock);
-		if (!err) {
-			if (copy_to_user((void __user *)arg, &info,
-					 sizeof(info))) {
-				err = -EFAULT;
-				sys_close(info.fd);
-			}
+		info.fd = get_unused_fd_flags(0);
+		if (unlikely(info.fd < 0))
+			return info.fd;
+
+		file = kcm_clone(sock);
+		if (IS_ERR(file)) {
+			put_unused_fd(info.fd);
+			return PTR_ERR(file);
 		}
-
+		if (copy_to_user((void __user *)arg, &info,
+				 sizeof(info))) {
+			put_unused_fd(info.fd);
+			fput(file);
+			return -EFAULT;
+		}
+		fd_install(info.fd, file);
+		err = 0;
 		break;
 	}
 	default:
