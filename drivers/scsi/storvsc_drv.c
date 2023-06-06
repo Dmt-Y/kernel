@@ -71,6 +71,9 @@
 #define VMSTOR_PROTO_VERSION_WIN8_1	VMSTOR_PROTO_VERSION(6, 0)
 #define VMSTOR_PROTO_VERSION_WIN10	VMSTOR_PROTO_VERSION(6, 2)
 
+/* channel callback timeout in ms */
+#define CALLBACK_TIMEOUT               2
+
 /*  Packet structure describing virtual storage requests. */
 enum vstor_packet_operation {
 	VSTOR_OPERATION_COMPLETE_IO		= 1,
@@ -378,9 +381,13 @@ static u32 max_outstanding_req_per_channel;
 static int storvsc_change_queue_depth(struct scsi_device *sdev, int queue_depth);
 
 static int storvsc_vcpus_per_sub_channel = 4;
+static unsigned int storvsc_max_hw_queues;
 
 module_param(storvsc_ringbuffer_size, int, S_IRUGO);
 MODULE_PARM_DESC(storvsc_ringbuffer_size, "Ring buffer size (bytes)");
+
+module_param(storvsc_max_hw_queues, uint, 0644);
+MODULE_PARM_DESC(storvsc_max_hw_queues, "Maximum number of hardware queues");
 
 module_param(storvsc_vcpus_per_sub_channel, int, S_IRUGO);
 MODULE_PARM_DESC(storvsc_vcpus_per_sub_channel, "Ratio of VCPUs to subchannels");
@@ -1190,6 +1197,7 @@ static void storvsc_on_channel_callback(void *context)
 	struct hv_device *device;
 	struct storvsc_device *stor_device;
 	struct Scsi_Host *shost;
+	unsigned long time_limit = jiffies + msecs_to_jiffies(CALLBACK_TIMEOUT);
 
 	if (channel->primary_channel != NULL)
 		device = channel->primary_channel->device_obj;
@@ -1209,6 +1217,11 @@ static void storvsc_on_channel_callback(void *context)
 		u64 rqst_id = desc->trans_id;
 		u32 minlen = rqst_id ? sizeof(struct vstor_packet) -
 			stor_device->vmscsi_size_delta : sizeof(enum vstor_packet_operation);
+
+		if (unlikely(time_after(jiffies, time_limit))) {
+			hv_pkt_iter_close(channel);
+			return;
+		}
 
 		if (pktlen < minlen) {
 			dev_err(&device->device,
@@ -1822,6 +1835,7 @@ static int storvsc_probe(struct hv_device *device,
 {
 	int ret;
 	int num_cpus = num_online_cpus();
+	int num_present_cpus = num_present_cpus();
 	struct Scsi_Host *host;
 	struct hv_host_device *host_dev;
 	bool dev_is_ide = ((dev_id->driver_data == IDE_GUID) ? true : false);
@@ -1929,8 +1943,17 @@ static int storvsc_probe(struct hv_device *device,
 	 * For non-IDE disks, the host supports multiple channels.
 	 * Set the number of HW queues we are supporting.
 	 */
-	if (!dev_is_ide)
-		host->nr_hw_queues = num_present_cpus();
+	if (!dev_is_ide) {
+		if (storvsc_max_hw_queues > num_present_cpus) {
+			storvsc_max_hw_queues = 0;
+			storvsc_log(device, STORVSC_LOGGING_WARN,
+				"Resetting invalid storvsc_max_hw_queues value to default.\n");
+		}
+		if (storvsc_max_hw_queues)
+			host->nr_hw_queues = storvsc_max_hw_queues;
+		else
+			host->nr_hw_queues = num_present_cpus;
+	}
 
 	/*
 	 * Set the error handler work queue.
