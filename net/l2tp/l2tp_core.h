@@ -58,7 +58,6 @@ struct l2tp_session_cfg {
 	int			debug;		/* bitmask of debug message
 						 * categories */
 	u16			vlan_id;	/* VLAN pseudowire only */
-	u16			offset;		/* offset to payload */
 	u16			l2specific_len;	/* Layer 2 specific length */
 	u16			l2specific_type; /* Layer 2 specific type */
 	u8			cookie[8];	/* optional cookie */
@@ -85,8 +84,6 @@ struct l2tp_session {
 	int			cookie_len;
 	u8			peer_cookie[8];
 	int			peer_cookie_len;
-	u16			offset;		/* offset from end of L2TP header
-						   to beginning of data */
 	u16			l2specific_len;
 	u16			l2specific_type;
 	u16			hdr_len;
@@ -332,23 +329,34 @@ do {									\
 #endif
 
 static inline int l2tp_v3_ensure_opt_in_linear(struct l2tp_session *session, struct sk_buff *skb,
-					       unsigned char **ptr, unsigned char **optr)
+                                              unsigned char **ptr, unsigned char **optr)
 {
-	int opt_len = session->peer_cookie_len + session->l2specific_len;
+       int opt_len = session->peer_cookie_len + session->l2specific_len;
 
-	if (opt_len > 0) {
-		int off = *ptr - *optr;
+       if (opt_len > 0) {
+               int off = *ptr - *optr;
 
-		if (!pskb_may_pull(skb, off + opt_len))
-			return -1;
+               if (!pskb_may_pull(skb, off + opt_len))
+                       return -1;
 
-		if (skb->data != *optr) {
-			*optr = skb->data;
-			*ptr = skb->data + off;
-		}
-	}
+               if (skb->data != *optr) {
+                       *optr = skb->data;
+                       *ptr = skb->data + off;
+               }
+       }
 
-	return 0;
+       return 0;
+}
+
+static inline int l2tp_get_l2specific_len(struct l2tp_session *session)
+{
+       switch (session->l2specific_type) {
+       case L2TP_L2SPECTYPE_DEFAULT:
+               return 4;
+       case L2TP_L2SPECTYPE_NONE:
+       default:
+               return 0;
+       }
 }
 
 #define l2tp_printk(ptr, type, func, fmt, ...)				\
