@@ -510,7 +510,7 @@ static int queue_pages_pte_range(pmd_t *pmd, unsigned long addr,
 			 * We cannot modify (split) THP in pure strict mode. A misplaced
 			 * page has to be reported by EIO
 			 */
-			if ((flags & (MPOL_MF_STRICT | MPOL_MF_MOVE | MPOL_MF_MOVE_ALL) == MPOL_MF_STRICT)) {
+			if ((flags & (MPOL_MF_STRICT | MPOL_MF_MOVE | MPOL_MF_MOVE_ALL)) == MPOL_MF_STRICT) {
 				spin_unlock(ptl);
 				return -EIO;
 			}
