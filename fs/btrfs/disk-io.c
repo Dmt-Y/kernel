@@ -812,7 +812,6 @@ static void run_one_async_start(struct btrfs_work *work)
 static void run_one_async_done(struct btrfs_work *work)
 {
 	struct async_submit_bio *async;
-	int limit;
 
 	async = container_of(work, struct  async_submit_bio, work);
 
