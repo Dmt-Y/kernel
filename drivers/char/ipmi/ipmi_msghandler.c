@@ -5362,8 +5362,6 @@ static int ipmi_init_msghandler(void)
 out_wq:
 	if (rv)
 		cleanup_srcu_struct(&ipmi_interfaces_srcu);
-
-out:
 	return rv;
 }
 
