@@ -22,14 +22,16 @@
 #include <linux/in.h>
 #include <linux/in6.h>
 #include <linux/slab.h>
+#include <linux/scatterlist.h>
+#include <linux/mm.h>
 #include <linux/mempool.h>
 #include <linux/workqueue.h>
 #include "cifs_fs_sb.h"
 #include "cifsacl.h"
 #include <crypto/internal/hash.h>
-#include <linux/scatterlist.h>
 #include <uapi/linux/cifs/cifs_mount.h>
 #include "smb2pdu.h"
+#include "smb2glob.h"
 
 #define SMB_PATH_MAX 260
 #define CIFS_PORT 445
@@ -81,10 +83,6 @@
 #define SMB_ECHO_INTERVAL_MAX 600
 #define SMB_ECHO_INTERVAL_DEFAULT 60
 
-/* dns resolution intervals in seconds */
-#define SMB_DNS_RESOLVE_INTERVAL_MIN     120
-#define SMB_DNS_RESOLVE_INTERVAL_DEFAULT 600
-
 /* maximum number of PDUs in one compound */
 #define MAX_COMPOUND 5
 
@@ -133,26 +131,16 @@ struct session_key {
 	char *response;
 };
 
-/* crypto security descriptor definition */
-struct sdesc {
-	struct shash_desc shash;
-	char ctx[];
-};
-
 /* crypto hashing related structure/fields, not specific to a sec mech */
 struct cifs_secmech {
-	struct crypto_shash *hmacmd5; /* hmac-md5 hash function */
-	struct crypto_shash *md5; /* md5 hash function */
-	struct crypto_shash *hmacsha256; /* hmac-sha256 hash function */
-	struct crypto_shash *cmacaes; /* block-cipher based MAC function */
-	struct crypto_shash *sha512; /* sha512 hash function */
-	struct sdesc *sdeschmacmd5;  /* ctxt to generate ntlmv2 hash, CR1 */
-	struct sdesc *sdescmd5; /* ctxt to generate cifs/smb signature */
-	struct sdesc *sdeschmacsha256;  /* ctxt to generate smb2 signature */
-	struct sdesc *sdesccmacaes;  /* ctxt to generate smb3 signature */
-	struct sdesc *sdescsha512; /* ctxt to generate smb3.11 signing key */
-	struct crypto_aead *ccmaesencrypt; /* smb3 encryption aead */
-	struct crypto_aead *ccmaesdecrypt; /* smb3 decryption aead */
+	struct shash_desc *hmacmd5; /* hmacmd5 hash function, for NTLMv2/CR1 hashes */
+	struct shash_desc *md5; /* md5 hash function, for CIFS/SMB1 signatures */
+	struct shash_desc *hmacsha256; /* hmac-sha256 hash function, for SMB2 signatures */
+	struct shash_desc *sha512; /* sha512 hash function, for SMB3.1.1 preauth hash */
+	struct shash_desc *aes_cmac; /* block-cipher based MAC function, for SMB3 signatures */
+
+	struct crypto_aead *enc; /* smb3 encryption AEAD TFM (AES-CCM and AES-GCM) */
+	struct crypto_aead *dec; /* smb3 decryption AEAD TFM (AES-CCM and AES-GCM) */
 };
 
 /* per smb session structure/fields */
@@ -434,7 +422,7 @@ struct smb_version_operations {
 	int (*enum_snapshots)(const unsigned int xid, struct cifs_tcon *tcon,
 			     struct cifsFileInfo *src_file, void __user *);
 	int (*notify)(const unsigned int xid, struct file *pfile,
-			     void __user *pbuf);
+			     void __user *pbuf, bool return_changes);
 	int (*query_mf_symlink)(unsigned int, struct cifs_tcon *,
 				struct cifs_sb_info *, const unsigned char *,
 				char *, unsigned int *);
@@ -540,6 +528,8 @@ struct smb_version_values {
 
 #define HEADER_SIZE(server) (server->vals->header_size)
 #define MAX_HEADER_SIZE(server) (server->vals->max_header_size)
+#define HEADER_PREAMBLE_SIZE(server) (server->vals->header_preamble_size)
+#define MID_HEADER_SIZE(server) (HEADER_SIZE(server) - 1 - HEADER_PREAMBLE_SIZE(server))
 
 struct smb_vol {
 	char *username;
@@ -676,6 +666,7 @@ inc_rfc1001_len(void *buf, int count)
 struct TCP_Server_Info {
 	struct list_head tcp_ses_list;
 	struct list_head smb_ses_list;
+	spinlock_t srv_lock;  /* protect anything here that is not protected */
 	int srv_count; /* reference counter */
 	/* 15 character server name + 0x20 16th byte indicating type = srv */
 	char server_RFC1001_name[RFC1001_NAME_LEN_WITH_NULL];
@@ -692,6 +683,7 @@ struct TCP_Server_Info {
 #endif
 	wait_queue_head_t response_q;
 	wait_queue_head_t request_q; /* if more than maxmpx to srvr must block*/
+	spinlock_t mid_lock;  /* protect mid queue and it's entries */
 	struct list_head pending_mid_q;
 	bool noblocksnd;		/* use blocking sendmsg */
 	bool noautotune;		/* do not autotune send buf sizes */
@@ -751,7 +743,6 @@ struct TCP_Server_Info {
 	/* point to the SMBD connection if RDMA is used instead of socket */
 	struct smbd_connection *smbd_conn;
 	struct delayed_work	echo; /* echo ping workqueue job */
-	struct delayed_work	resolve; /* dns resolution workqueue job */
 	char	*smallbuf;	/* pointer to current "small" buffer */
 	char	*bigbuf;	/* pointer to current "big" buffer */
 	/* Total size of this PDU. Only valid from cifs_demultiplex_thread */
@@ -805,6 +796,11 @@ struct TCP_Server_Info {
 #endif
 };
 
+static inline bool is_smb1(struct TCP_Server_Info *server)
+{
+	return HEADER_PREAMBLE_SIZE(server) != 0;
+}
+
 struct cifs_credits {
 	unsigned int value;
 	unsigned int instance;
@@ -814,6 +810,7 @@ static inline unsigned int
 in_flight(struct TCP_Server_Info *server)
 {
 	unsigned int num;
+
 	spin_lock(&server->req_lock);
 	num = server->in_flight;
 	spin_unlock(&server->req_lock);
@@ -824,6 +821,7 @@ static inline bool
 has_credits(struct TCP_Server_Info *server, int *credits, int num_credits)
 {
 	int num;
+
 	spin_lock(&server->req_lock);
 	num = *credits;
 	spin_unlock(&server->req_lock);
@@ -996,11 +994,12 @@ struct cifs_ses {
 	struct list_head smb_ses_list;
 	struct list_head tcon_list;
 	struct cifs_tcon *tcon_ipc;
+	spinlock_t ses_lock;  /* protect anything here that is not protected */
 	struct mutex session_mutex;
 	struct TCP_Server_Info *server;	/* pointer to server info */
 	int ses_count;		/* reference counter */
-	enum statusEnum status;  /* updates protected by GlobalMid_Lock */
-	unsigned overrideSecFlg;  /* if non-zero override global sec flags */
+	enum statusEnum status;  /* updates protected by cifs_tcp_ses_lock */
+	unsigned int overrideSecFlg;  /* if non-zero override global sec flags */
 	char *serverOS;		/* name of operating system underlying server */
 	char *serverNOS;	/* name of network operating system of server */
 	char *serverDomain;	/* security realm of server */
@@ -1099,6 +1098,7 @@ struct cifs_tcon {
 	struct list_head tcon_list;
 	int tc_count;
 	struct list_head rlist; /* reconnect list */
+	spinlock_t tc_lock;  /* protect anything here that is not protected */
 	atomic_t num_local_opens;  /* num of all opens including disconnected */
 	atomic_t num_remote_opens; /* num of all network opens on server */
 	struct list_head openFileList;
@@ -1322,7 +1322,7 @@ struct cifsFileInfo {
 	__u32 pid;		/* process id who opened file */
 	struct cifs_fid fid;	/* file id from remote */
 	struct list_head rlist; /* reconnect list */
-	/* BB add lock scope info here if needed */ ;
+	/* BB add lock scope info here if needed */
 	/* lock scope id (0 if none) */
 	struct dentry *dentry;
 	struct tcon_link *tlink;
@@ -1348,6 +1348,7 @@ struct cifs_io_parms {
 	__u64 offset;
 	unsigned int length;
 	struct cifs_tcon *tcon;
+	struct TCP_Server_Info *server;
 };
 
 struct cifs_aio_ctx {
@@ -1688,6 +1689,20 @@ struct dfs_info3_param {
 	int ttl;
 };
 
+struct cifs_mount_ctx {
+	struct cifs_sb_info *cifs_sb;
+	struct smb_vol *fs_ctx;
+	unsigned int xid;
+	struct TCP_Server_Info *server;
+	struct cifs_ses *ses;
+	struct cifs_tcon *tcon;
+#ifdef CONFIG_CIFS_DFS_UPCALL
+	struct cifs_ses *root_ses;
+	uuid_t mount_id;
+	char *origin_fullpath, *leaf_fullpath;
+#endif
+};
+
 static inline void free_dfs_info_param(struct dfs_info3_param *param)
 {
 	if (param) {
@@ -1700,6 +1715,7 @@ static inline void free_dfs_info_array(struct dfs_info3_param *param,
 				       int number_of_items)
 {
 	int i;
+
 	if ((number_of_items == 0) || (param == NULL))
 		return;
 	for (i = 0; i < number_of_items; i++) {
@@ -1832,34 +1848,78 @@ require use of the stronger protocol */
  */
 
 /****************************************************************************
- *  Locking notes.  All updates to global variables and lists should be
- *                  protected by spinlocks or semaphores.
+ * Here are all the locks (spinlock, mutex, semaphore) in cifs.ko, arranged according
+ * to the locking order. i.e. if two locks are to be held together, the lock that
+ * appears higher in this list needs to be taken before the other.
  *
- *  Spinlocks
- *  ---------
- *  GlobalMid_Lock protects:
- *	list operations on pending_mid_q and oplockQ
- *      updates to XID counters, multiplex id  and SMB sequence numbers
- *      list operations on global DnotifyReqList
- *      updates to ses->status and TCP_Server_Info->tcpStatus
- *      updates to server->CurrentMid
- *  tcp_ses_lock protects:
- *	list operations on tcp and SMB session lists
- *  tcon->open_file_lock protects the list of open files hanging off the tcon
- *  inode->open_file_lock protects the openFileList hanging off the inode
- *  cfile->file_info_lock protects counters and fields in cifs file struct
- *  f_owner.lock protects certain per file struct operations
- *  mapping->page_lock protects certain per page operations
+ * If you hold a lock that is lower in this list, and you need to take a higher lock
+ * (or if you think that one of the functions that you're calling may need to), first
+ * drop the lock you hold, pick up the higher lock, then the lower one. This will
+ * ensure that locks are picked up only in one direction in the below table
+ * (top to bottom).
  *
- *  Note that the cifs_tcon.open_file_lock should be taken before
- *  not after the cifsInodeInfo.open_file_lock
+ * Also, if you expect a function to be called with a lock held, explicitly document
+ * this in the comments on top of your function definition.
  *
- *  Semaphores
- *  ----------
- *  sesSem     operations on smb session
- *  tconSem    operations on tree connection
- *  fh_sem      file handle reconnection operations
+ * And also, try to keep the critical sections (lock hold time) to be as minimal as
+ * possible. Blocking / calling other functions with a lock held always increase
+ * the risk of a possible deadlock.
  *
+ * Following this rule will avoid unnecessary deadlocks, which can get really hard to
+ * debug. Also, any new lock that you introduce, please add to this list in the correct
+ * order.
+ *
+ * Please populate this list whenever you introduce new locks in your changes. Or in
+ * case I've missed some existing locks. Please ensure that it's added in the list
+ * based on the locking order expected.
+ *
+ * =====================================================================================
+ * Lock				Protects			Initialization fn
+ * =====================================================================================
+ * vol_list_lock
+ * vol_info->ctx_lock		vol_info->ctx
+ * cifs_sb_info->tlink_tree_lock	cifs_sb_info->tlink_tree	cifs_setup_cifs_sb
+ * TCP_Server_Info->		TCP_Server_Info			cifs_get_tcp_session
+ * reconnect_mutex
+ * TCP_Server_Info->srv_mutex	TCP_Server_Info			cifs_get_tcp_session
+ * cifs_ses->session_mutex		cifs_ses		sesInfoAlloc
+ *				cifs_tcon
+ * cifs_tcon->open_file_lock	cifs_tcon->openFileList		tconInfoAlloc
+ *				cifs_tcon->pending_opens
+ * cifs_tcon->stat_lock		cifs_tcon->bytes_read		tconInfoAlloc
+ *				cifs_tcon->bytes_written
+ * cifs_tcp_ses_lock		cifs_tcp_ses_list		sesInfoAlloc
+ * GlobalMid_Lock		GlobalMaxActiveXid		init_cifs
+ *				GlobalCurrentXid
+ *				GlobalTotalActiveXid
+ * TCP_Server_Info->srv_lock	(anything in struct not protected by another lock and can change)
+ * TCP_Server_Info->mid_lock	TCP_Server_Info->pending_mid_q	cifs_get_tcp_session
+ *				->CurrentMid
+ *				(any changes in mid_q_entry fields)
+ * TCP_Server_Info->req_lock	TCP_Server_Info->in_flight	cifs_get_tcp_session
+ *				->credits
+ *				->echo_credits
+ *				->oplock_credits
+ *				->reconnect_instance
+ * cifs_ses->ses_lock		(anything that is not protected by another lock and can change)
+ * cifs_ses->iface_lock		cifs_ses->iface_list		sesInfoAlloc
+ *				->iface_count
+ *				->iface_last_update
+ * cifs_ses->chan_lock		cifs_ses->chans
+ *				->chans_need_reconnect
+ *				->chans_in_reconnect
+ * cifs_tcon->tc_lock		(anything that is not protected by another lock and can change)
+ * cifsInodeInfo->open_file_lock	cifsInodeInfo->openFileList	cifs_alloc_inode
+ * cifsInodeInfo->writers_lock	cifsInodeInfo->writers		cifsInodeInfo_alloc
+ * cifsInodeInfo->lock_sem	cifsInodeInfo->llist		cifs_init_once
+ *				->can_cache_brlcks
+ * cifsInodeInfo->deferred_lock	cifsInodeInfo->deferred_closes	cifsInodeInfo_alloc
+ * cached_fid->fid_mutex		cifs_tcon->crfid		tconInfoAlloc
+ * cifsFileInfo->fh_mutex		cifsFileInfo			cifs_new_fileinfo
+ * cifsFileInfo->file_info_lock	cifsFileInfo->count		cifs_new_fileinfo
+ *				->invalidHandle			initiate_cifs_search
+ *				->oplock_break_cancelled
+ * cifs_aio_ctx->aio_mutex		cifs_aio_ctx			cifs_aio_ctx_alloc
  ****************************************************************************/
 
 #ifdef DECLARE_GLOBALS_HERE
@@ -1880,9 +1940,7 @@ extern struct list_head		cifs_tcp_ses_list;
 /*
  * This lock protects the cifs_tcp_ses_list, the list of smb sessions per
  * tcp session, and the list of tcon's per smb session. It also protects
- * the reference counters for the server, smb session, and tcon. It also
- * protects some fields in the TCP_Server_Info struct such as dstaddr. Finally,
- * changes to the tcon->tidStatus should be done while holding this lock.
+ * the reference counters for the server, smb session, and tcon.
  * generally the locks should be taken in order tcp_ses_lock before
  * tcon->open_file_lock and that before file->file_info_lock since the
  * structure order is cifs_socket-->cifs_ses-->cifs_tcon-->cifs_file
@@ -2019,6 +2077,74 @@ static inline bool cifs_is_referral_server(struct cifs_tcon *tcon,
 static inline u64 cifs_flock_len(const struct file_lock *fl)
 {
 	return (u64)fl->fl_end - fl->fl_start + 1;
+}
+
+static inline unsigned int cifs_get_num_sgs(const struct smb_rqst *rqst,
+					    int num_rqst,
+					    const u8 *sig)
+{
+	unsigned int len, skip;
+	unsigned int nents = 0;
+	unsigned long addr;
+	int i, j;
+
+	/*
+	 * The first rqst has a transform header where the first 20 bytes are
+	 * not part of the encrypted blob.
+	 */
+	skip = 20;
+
+	/* Assumes the first rqst has a transform header as the first iov.
+	 * I.e.
+	 * rqst[0].rq_iov[0]  is transform header
+	 * rqst[0].rq_iov[1+] data to be encrypted/decrypted
+	 * rqst[1+].rq_iov[0+] data to be encrypted/decrypted
+	 */
+	for (i = 0; i < num_rqst; i++) {
+		for (j = 0; j < rqst[i].rq_nvec; j++) {
+			struct kvec *iov = &rqst[i].rq_iov[j];
+
+			addr = (unsigned long)iov->iov_base + skip;
+			if (unlikely(is_vmalloc_addr((void *)addr))) {
+				len = iov->iov_len - skip;
+				nents += DIV_ROUND_UP(offset_in_page(addr) + len,
+						      PAGE_SIZE);
+			} else {
+				nents++;
+			}
+			skip = 0;
+		}
+		nents += rqst[i].rq_npages;
+	}
+	nents += DIV_ROUND_UP(offset_in_page(sig) + SMB2_SIGNATURE_SIZE, PAGE_SIZE);
+	return nents;
+}
+
+/* We can not use the normal sg_set_buf() as we will sometimes pass a
+ * stack object as buf.
+ */
+static inline struct scatterlist *cifs_sg_set_buf(struct scatterlist *sg,
+						  const void *buf,
+						  unsigned int buflen)
+{
+	unsigned long addr = (unsigned long)buf;
+	unsigned int off = offset_in_page(addr);
+
+	addr &= PAGE_MASK;
+	if (unlikely(is_vmalloc_addr((void *)addr))) {
+		do {
+			unsigned int len = min_t(unsigned int, buflen, PAGE_SIZE - off);
+
+			sg_set_page(sg++, vmalloc_to_page((void *)addr), len, off);
+
+			off = 0;
+			addr += PAGE_SIZE;
+			buflen -= len;
+		} while (buflen);
+	} else {
+		sg_set_page(sg++, virt_to_page(addr), buflen, off);
+	}
+	return sg;
 }
 
 #endif	/* _CIFS_GLOB_H */
