@@ -146,7 +146,8 @@ char *cifs_compose_mount_options(const char *sb_mountdata,
 	const char *prepath = NULL;
 	int md_len;
 	char *tkn_e;
-	char *srvIP = NULL;
+	char srvIP[INET6_ADDRSTRLEN] = { 0 };
+	struct sockaddr_storage ss;
 	char sep = ',';
 	int off, noff;
 
@@ -179,12 +180,24 @@ char *cifs_compose_mount_options(const char *sb_mountdata,
 		}
 	}
 
-	rc = dns_resolve_server_name_to_ip(name, &srvIP, NULL);
+	rc = dns_resolve_server_name_to_ip(name, (struct sockaddr *)&ss, NULL);
 	if (rc < 0) {
 		cifs_dbg(FYI, "%s: Failed to resolve server part of %s to IP: %d\n",
 			 __func__, name, rc);
 		goto compose_mount_options_err;
 	}
+
+	switch (ss.ss_family) {
+	case AF_INET:
+		rc = scnprintf(srvIP, INET_ADDRSTRLEN, "%pI4", &((struct sockaddr_in *)&ss)->sin_addr.s_addr);
+		break;
+	case AF_INET6:
+		rc = scnprintf(srvIP, INET6_ADDRSTRLEN, "%pI6", &((struct sockaddr_in6 *)&ss)->sin6_addr.s6_addr);
+		break;
+	}
+
+	if (rc <= 0)
+		memcpy(srvIP, "N/A", 3);
 
 	/*
 	 * In most cases, we'll be building a shorter string than the original,
@@ -251,7 +264,6 @@ char *cifs_compose_mount_options(const char *sb_mountdata,
 	/*cifs_dbg(FYI, "%s: submount mountdata: %s\n", __func__, mountdata );*/
 
 compose_mount_options_out:
-	kfree(srvIP);
 	return mountdata;
 
 compose_mount_options_err:

@@ -230,14 +230,15 @@ cifs_nt_open(const char *full_path, struct inode *inode, struct cifs_sb_info *ci
 	if (f_flags & O_DIRECT)
 		create_options |= CREATE_NO_BUFFER;
 
-	oparms.tcon = tcon;
-	oparms.cifs_sb = cifs_sb;
-	oparms.desired_access = desired_access;
-	oparms.create_options = cifs_create_options(cifs_sb, create_options);
-	oparms.disposition = disposition;
-	oparms.path = full_path;
-	oparms.fid = fid;
-	oparms.reconnect = false;
+	oparms = (struct cifs_open_parms) {
+		.tcon = tcon,
+		.cifs_sb = cifs_sb,
+		.desired_access = desired_access,
+		.create_options = cifs_create_options(cifs_sb, create_options),
+		.disposition = disposition,
+		.path = full_path,
+		.fid = fid,
+	};
 
 	rc = server->ops->open(xid, &oparms, oplock, buf);
 
@@ -449,7 +450,7 @@ void _cifsFileInfo_put(struct cifsFileInfo *cifs_file,
 	struct cifsInodeInfo *cifsi = CIFS_I(inode);
 	struct super_block *sb = inode->i_sb;
 	struct cifs_sb_info *cifs_sb = CIFS_SB(sb);
-	struct cifs_fid fid;
+	struct cifs_fid fid = {};
 	struct cifs_pending_open open;
 	bool oplock_break_cancelled;
 
@@ -530,7 +531,7 @@ int cifs_open(struct inode *inode, struct file *file)
 	struct cifsFileInfo *cfile = NULL;
 	const char *full_path = NULL;
 	bool posix_open_ok = false;
-	struct cifs_fid fid;
+	struct cifs_fid fid = {};
 	struct cifs_pending_open open;
 
 	xid = get_xid();
@@ -770,14 +771,16 @@ cifs_reopen_file(struct cifsFileInfo *cfile, bool can_flush)
 	if (server->ops->get_lease_key)
 		server->ops->get_lease_key(inode, &cfile->fid);
 
-	oparms.tcon = tcon;
-	oparms.cifs_sb = cifs_sb;
-	oparms.desired_access = desired_access;
-	oparms.create_options = cifs_create_options(cifs_sb, create_options);
-	oparms.disposition = disposition;
-	oparms.path = full_path;
-	oparms.fid = &cfile->fid;
-	oparms.reconnect = true;
+	oparms = (struct cifs_open_parms) {
+		.tcon = tcon,
+		.cifs_sb = cifs_sb,
+		.desired_access = desired_access,
+		.create_options = cifs_create_options(cifs_sb, create_options),
+		.disposition = disposition,
+		.path = full_path,
+		.fid = &cfile->fid,
+		.reconnect = true,
+	};
 
 	/*
 	 * Can not refresh inode by passing in file_info buf to be returned by
@@ -1742,11 +1745,13 @@ int cifs_flock(struct file *file, int cmd, struct file_lock *fl)
 	struct cifsFileInfo *cfile;
 	__u32 type;
 
-	rc = -EACCES;
 	xid = get_xid();
 
-	if (!(fl->fl_flags & FL_FLOCK))
-		return -ENOLCK;
+	if (!(fl->fl_flags & FL_FLOCK)) {
+		rc = -ENOLCK;
+		free_xid(xid);
+		return rc;
+	}
 
 	cfile = (struct cifsFileInfo *)file->private_data;
 	tcon = tlink_tcon(cfile->tlink);
@@ -1765,8 +1770,9 @@ int cifs_flock(struct file *file, int cmd, struct file_lock *fl)
 		 * if no lock or unlock then nothing to do since we do not
 		 * know what it is
 		 */
+		rc = -EOPNOTSUPP;
 		free_xid(xid);
-		return -EOPNOTSUPP;
+		return rc;
 	}
 
 	rc = cifs_setlk(file, fl, type, wait_flag, posix_lck, lock, unlock,
@@ -2339,6 +2345,21 @@ wdata_send_pages(struct cifs_writedata *wdata, unsigned int nr_pages,
 	return rc;
 }
 
+static int
+cifs_writepage_locked(struct page *page, struct writeback_control *wbc);
+
+static int cifs_write_one_page(struct page *page, struct writeback_control *wbc,
+		void *data)
+{
+	struct address_space *mapping = data;
+	int ret;
+
+	ret = cifs_writepage_locked(page, wbc);
+	unlock_page(page);
+	mapping_set_error(mapping, ret);
+	return ret;
+}
+
 static int cifs_writepages(struct address_space *mapping,
 			   struct writeback_control *wbc)
 {
@@ -2355,10 +2376,11 @@ static int cifs_writepages(struct address_space *mapping,
 
 	/*
 	 * If wsize is smaller than the page cache size, default to writing
-	 * one page at a time via cifs_writepage
+	 * one page at a time.
 	 */
 	if (cifs_sb->wsize < PAGE_SIZE)
-		return generic_writepages(mapping, wbc);
+		return write_cache_pages(mapping, wbc, cifs_write_one_page,
+				mapping);
 
 	xid = get_xid();
 	if (wbc->range_cyclic) {
@@ -2538,13 +2560,6 @@ retry_write:
 	end_page_writeback(page);
 	put_page(page);
 	free_xid(xid);
-	return rc;
-}
-
-static int cifs_writepage(struct page *page, struct writeback_control *wbc)
-{
-	int rc = cifs_writepage_locked(page, wbc);
-	unlock_page(page);
 	return rc;
 }
 
@@ -3013,6 +3028,9 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 					     cifs_uncached_writev_complete);
 			if (!wdata) {
 				rc = -ENOMEM;
+				for (i = 0; i < nr_pages; i++)
+					put_page(pagevec[i]);
+				kvfree(pagevec);
 				add_credits_and_wake_if(server, credits, 0);
 				break;
 			}
@@ -3277,6 +3295,9 @@ static ssize_t __cifs_writev(
 
 ssize_t cifs_direct_writev(struct kiocb *iocb, struct iov_iter *from)
 {
+	struct file *file = iocb->ki_filp;
+
+	cifs_revalidate_mapping(file->f_inode);
 	return __cifs_writev(iocb, from, true);
 }
 
@@ -3566,7 +3587,7 @@ uncached_fill_pages(struct TCP_Server_Info *server,
 		rdata->got_bytes += result;
 	}
 
-	return rdata->got_bytes > 0 && result != -ECONNABORTED ?
+	return result != -ECONNABORTED && rdata->got_bytes > 0 ?
 						rdata->got_bytes : result;
 }
 
@@ -3965,6 +3986,15 @@ static ssize_t __cifs_readv(
 		len = ctx->len;
 	}
 
+	if (direct) {
+		rc = filemap_write_and_wait_range(file->f_inode->i_mapping,
+						  offset, offset + len - 1);
+		if (rc) {
+			kref_put(&ctx->refcount, cifs_aio_ctx_release);
+			return -EAGAIN;
+		}
+	}
+
 	/* grab a lock here due to read response handlers can access ctx */
 	mutex_lock(&ctx->aio_mutex);
 
@@ -4318,7 +4348,7 @@ readpages_fill_pages(struct TCP_Server_Info *server,
 		rdata->got_bytes += result;
 	}
 
-	return rdata->got_bytes > 0 && result != -ECONNABORTED ?
+	return result != -ECONNABORTED && rdata->got_bytes > 0 ?
 						rdata->got_bytes : result;
 }
 
@@ -4921,7 +4951,6 @@ static void cifs_swap_deactivate(struct file *file)
 const struct address_space_operations cifs_addr_ops = {
 	.readpage = cifs_readpage,
 	.readpages = cifs_readpages,
-	.writepage = cifs_writepage,
 	.writepages = cifs_writepages,
 	.write_begin = cifs_write_begin,
 	.write_end = cifs_write_end,
@@ -4946,7 +4975,6 @@ const struct address_space_operations cifs_addr_ops = {
  */
 const struct address_space_operations cifs_addr_ops_smallbuf = {
 	.readpage = cifs_readpage,
-	.writepage = cifs_writepage,
 	.writepages = cifs_writepages,
 	.write_begin = cifs_write_begin,
 	.write_end = cifs_write_end,
