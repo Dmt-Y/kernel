@@ -523,6 +523,8 @@ static void do_unoptimize_kprobes(void)
 	arch_unoptimize_kprobes(&unoptimizing_list, &freeing_list);
 	/* Loop free_list for disarming */
 	list_for_each_entry_safe(op, tmp, &freeing_list, list) {
+		/* Switching from detour code to origin */
+		op->kp.flags &= ~KPROBE_FLAG_OPTIMIZED;
 		/* Disarm probes if marked disabled */
 		if (kprobe_disabled(&op->kp))
 			arch_disarm_kprobe(&op->kp);
@@ -661,6 +663,7 @@ static void force_unoptimize_kprobe(struct optimized_kprobe *op)
 	get_online_cpus();
 	arch_unoptimize_kprobe(op);
 	put_online_cpus();
+	op->kp.flags &= ~KPROBE_FLAG_OPTIMIZED;
 	if (kprobe_disabled(&op->kp))
 		arch_disarm_kprobe(&op->kp);
 }
@@ -688,7 +691,6 @@ static void unoptimize_kprobe(struct kprobe *p, bool force)
 		return;
 	}
 
-	op->kp.flags &= ~KPROBE_FLAG_OPTIMIZED;
 	if (!list_empty(&op->list)) {
 		/* Dequeue from the optimization queue */
 		list_del_init(&op->list);
