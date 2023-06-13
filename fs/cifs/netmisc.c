@@ -910,10 +910,10 @@ map_and_check_smb_error(struct mid_q_entry *mid, bool logErr)
 		if (class == ERRSRV && code == ERRbaduid) {
 			cifs_dbg(FYI, "Server returned 0x%x, reconnecting session...\n",
 				code);
-			spin_lock(&GlobalMid_Lock);
+			spin_lock(&mid->server->srv_lock);
 			if (mid->server->tcpStatus != CifsExiting)
 				mid->server->tcpStatus = CifsNeedReconnect;
-			spin_unlock(&GlobalMid_Lock);
+			spin_unlock(&mid->server->srv_lock);
 		}
 	}
 
