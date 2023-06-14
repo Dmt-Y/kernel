@@ -265,6 +265,8 @@ void zfcp_dbf_rec_trig(char *tag, struct zfcp_adapter *adapter,
 	struct list_head *entry;
 	unsigned long flags;
 
+	lockdep_assert_held(&adapter->erp_lock);
+
 	spin_lock_irqsave(&dbf->rec_lock, flags);
 	memset(rec, 0, sizeof(*rec));
 
