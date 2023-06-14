@@ -2579,7 +2579,6 @@ static const struct file_operations fops_kp = {
 static int __init debugfs_kprobe_init(void)
 {
 	struct dentry *dir, *file;
-	unsigned int value = 1;
 
 	dir = debugfs_create_dir("kprobes", NULL);
 	if (!dir)
@@ -2591,7 +2590,7 @@ static int __init debugfs_kprobe_init(void)
 		goto error;
 
 	file = debugfs_create_file("enabled", 0600, dir,
-					&value, &fops_kp);
+					NULL, &fops_kp);
 	if (!file)
 		goto error;
 
