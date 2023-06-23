@@ -73,6 +73,9 @@ struct usb_hub {
 	unsigned		quirk_check_port_auto_suspend:1;
 
 	unsigned		has_indicators:1;
+#ifndef __GENKSYMS__
+	unsigned		quirk_disable_autosuspend:1;
+#endif
 	u8			indicator[USB_MAXCHILDREN];
 	struct delayed_work	leds;
 	struct delayed_work	init_work;
