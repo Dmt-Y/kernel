@@ -53,6 +53,9 @@ static unsigned long long quirks;
 module_param(quirks, ullong, S_IRUGO);
 MODULE_PARM_DESC(quirks, "Bit flags for quirks to be enabled as default");
 
+unsigned long suse_xhci_grace_period = 0;
+DEFINE_SPINLOCK(suse_grace_lock);
+
 static bool td_on_ring(struct xhci_td *td, struct xhci_ring *ring)
 {
 	struct xhci_segment *seg = ring->first_seg;
@@ -164,9 +167,13 @@ int xhci_start(struct xhci_hcd *xhci)
 		xhci_err(xhci, "Host took too long to start, "
 				"waited %u microseconds.\n",
 				XHCI_MAX_HALT_USEC);
-	if (!ret)
+	if (!ret) {
+		spin_lock_irq(&suse_grace_lock);
 		/* clear state flags. Including dying, halted or removing */
 		xhci->xhc_state = 0;
+		suse_xhci_grace_period = jiffies + msecs_to_jiffies(500);
+		spin_unlock_irq(&suse_grace_lock);
+	}
 
 	return ret;
 }

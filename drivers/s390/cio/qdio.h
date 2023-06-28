@@ -94,7 +94,7 @@ static inline int do_sqbs(u64 token, unsigned char state, int queue,
 	asm volatile(
 		"	.insn	rsy,0xeb000000008A,%1,0,0(%2)"
 		: "+d" (_ccq), "+d" (_queuestart)
-		: "d" ((unsigned long)state), "d" (_token)
+		: "a" ((unsigned long)state), "d" (_token)
 		: "memory", "cc");
 	*count = _ccq & 0xff;
 	*start = _queuestart & 0xff;

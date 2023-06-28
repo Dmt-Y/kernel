@@ -4733,6 +4733,8 @@ _base_release_memory_pools(struct MPT3SAS_ADAPTER *ioc)
 		if (ioc->pcie_sgl_dma_pool)
 			dma_pool_destroy(ioc->pcie_sgl_dma_pool);
 	}
+	kfree(ioc->pcie_sg_lookup);
+	ioc->pcie_sg_lookup = NULL;
 
 	if (ioc->config_page) {
 		dexitprintk(ioc,
