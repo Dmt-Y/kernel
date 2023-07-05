@@ -604,7 +604,7 @@ retry_ref:
 			ce = mb_cache_entry_get(ext4_mb_cache, hash,
 						bh->b_blocknr);
 			if (ce) {
-				ce->e_reusable = 1;
+				set_bit(MBE_REUSABLE_B, &ce->e_flags);
 				mb_cache_entry_put(ext4_mb_cache, ce);
 			}
 		}
@@ -962,7 +962,7 @@ inserted:
 				}
 				BHDR(new_bh)->h_refcount = cpu_to_le32(ref);
 				if (ref == EXT4_XATTR_REFCOUNT_MAX)
-					ce->e_reusable = 0;
+					clear_bit(MBE_REUSABLE_B, &ce->e_flags);
 				ea_bdebug(new_bh, "reusing; refcount now=%d",
 					  ref);
 				ext4_xattr_block_csum_set(inode, new_bh);
