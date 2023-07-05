@@ -810,6 +810,8 @@ struct ixgbe_adapter {
 	struct xdp_umem **xsk_umems;
 	u16 num_xsk_umems_used;
 	u16 num_xsk_umems;
+
+	spinlock_t vfs_lock;
 };
 
 static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
