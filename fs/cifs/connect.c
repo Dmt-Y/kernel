@@ -4413,7 +4413,7 @@ int cifs_mount_get_session(struct cifs_mount_ctx *mnt_ctx)
 	if (IS_ERR(ses)) {
 		rc = PTR_ERR(ses);
 		ses = NULL;
-		return rc;
+		goto out;
 	}
 
 	if ((ctx->persistent == true) && (!(ses->server->capabilities &
