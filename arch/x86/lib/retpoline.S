@@ -63,7 +63,7 @@ GENERATE_THUNK(r15)
  *    from re-poisioning the BTB prediction.
  */
 	.align 64
-	.skip 63, 0xcc
+	.skip 64 - (__x86_return_thunk - zen_untrain_ret), 0xcc
 .globl zen_untrain_ret;
 zen_untrain_ret:
 
@@ -97,7 +97,8 @@ zen_untrain_ret:
 	 * which will be contained safely by the INT3.
 	 */
 
-ENTRY(__x86_return_thunk)
+.globl __x86_return_thunk;
+__x86_return_thunk:
 	ret
 	int3
 ENDPROC(__x86_return_thunk)
