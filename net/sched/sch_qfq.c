@@ -116,6 +116,7 @@
 
 #define QFQ_MTU_SHIFT		16	/* to support TSO/GSO */
 #define QFQ_MIN_LMAX		512	/* see qfq_slot_insert */
+#define QFQ_MAX_LMAX		(1UL << QFQ_MTU_SHIFT)
 
 #define QFQ_MAX_AGG_CLASSES	8 /* max num classes per aggregate allowed */
 
@@ -426,7 +427,7 @@ static int qfq_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 
 	if (tb[TCA_QFQ_WEIGHT]) {
 		weight = nla_get_u32(tb[TCA_QFQ_WEIGHT]);
-		if (!weight || weight > (1UL << QFQ_MAX_WSHIFT)) {
+		if (!weight || weight > QFQ_MAX_LMAX) {
 			pr_notice("qfq: invalid weight %u\n", weight);
 			return -EINVAL;
 		}
@@ -438,7 +439,7 @@ static int qfq_change_class(struct Qdisc *sch, u32 classid, u32 parentid,
 	else
 		lmax = psched_mtu(qdisc_dev(sch));
 
-	if (lmax < QFQ_MIN_LMAX || lmax > (1UL << QFQ_MTU_SHIFT)) {
+	if (lmax < QFQ_MIN_LMAX || lmax > QFQ_MAX_LMAX) {
 		pr_notice("qfq: invalid max length %u\n", lmax);
 		return -EINVAL;
 	}
