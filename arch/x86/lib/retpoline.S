@@ -7,6 +7,7 @@
 #include <asm/alternative-asm.h>
 #include <asm/export.h>
 #include <asm/nospec-branch.h>
+#include <asm/nops.h>
 
 .macro THUNK reg
 	.section .text.__x86.indirect_thunk
@@ -47,6 +48,47 @@ GENERATE_THUNK(r14)
 GENERATE_THUNK(r15)
 #endif
 /*
+ * srso_untrain_ret_alias() and srso_safe_ret_alias() are placed at
+ * special addresses:
+ *
+ * - srso_untrain_ret_alias() is 2M aligned
+ * - srso_safe_ret_alias() is also in the same 2M page but bits 2, 8, 14
+ * and 20 in its virtual address are set (while those bits in the
+ * srso_untrain_ret_alias() function are cleared).
+ *
+ * This guarantees that those two addresses will alias in the branch
+ * target buffer of Zen3/4 generations, leading to any potential
+ * poisoned entries at that BTB slot to get evicted.
+ *
+ * As a result, srso_safe_ret_alias() becomes a safe return.
+ */
+#ifdef CONFIG_CPU_SRSO
+	.section .text.__x86.rethunk_untrain
+
+.globl srso_untrain_ret_alias;
+srso_untrain_ret_alias:
+	ASM_NOP2
+	lfence
+	jmp __x86_return_thunk
+ENDPROC(srso_untrain_ret_alias)
+__EXPORT_THUNK(srso_untrain_ret_alias)
+
+	.section .text.__x86.rethunk_safe
+#endif
+
+/* Needs a definition for the __x86_return_thunk alternative below. */
+.globl srso_safe_ret_alias;
+srso_safe_ret_alias:
+#ifdef CONFIG_CPU_SRSO
+	add $8, %_ASM_SP
+	UNWIND_HINT_FUNC
+#endif
+	ret
+	int3
+ENDPROC(srso_safe_ret_alias)
+
+
+/*
  * This function name is magical and is used by -mfunction-return=thunk-extern
  * for the compiler to generate JMPs to it.
  */
@@ -63,7 +105,7 @@ GENERATE_THUNK(r15)
  *    from re-poisioning the BTB prediction.
  */
 	.align 64
-	.skip 64 - (__x86_return_thunk - zen_untrain_ret), 0xcc
+	.skip 64 - (__ret - zen_untrain_ret), 0xcc
 .globl zen_untrain_ret;
 zen_untrain_ret:
 
@@ -97,11 +139,11 @@ zen_untrain_ret:
 	 * which will be contained safely by the INT3.
 	 */
 
-.globl __x86_return_thunk;
-__x86_return_thunk:
+.globl __ret;
+__ret:
 	ret
 	int3
-ENDPROC(__x86_return_thunk)
+ENDPROC(__ret)
 
 	/*
 	 * Ensure the TEST decoding / BTB invalidation is complete.
@@ -112,9 +154,44 @@ ENDPROC(__x86_return_thunk)
 	 * Jump back and execute the RET in the middle of the TEST instruction.
 	 * INT3 is for SLS protection.
 	 */
-	jmp __x86_return_thunk
+	jmp __ret
 	int3
 ENDPROC(zen_untrain_ret)
 __EXPORT_THUNK(zen_untrain_ret)
 
+/*
+ * SRSO untraining sequence for Zen1/2, similar to zen_untrain_ret()
+ * above. On kernel entry, srso_untrain_ret() is executed which is a
+ *
+ * movabs $0xccccccc308c48348,%rax
+ *
+ * and when the return thunk executes the inner label srso_safe_ret()
+ * later, it is a stack manipulation and a RET which is mispredicted and
+ * thus a "safe" one to use.
+ */
+	.align 64
+	.skip 64 - (srso_safe_ret - srso_untrain_ret), 0xcc
+.globl srso_untrain_ret;
+srso_untrain_ret:
+	.byte 0x48, 0xb8
+
+.globl srso_safe_ret;
+srso_safe_ret:
+	add $8, %_ASM_SP
+	ret
+	int3
+	int3
+	int3
+	lfence
+	call srso_safe_ret
+	int3
+ENDPROC(srso_safe_ret)
+ENDPROC(srso_untrain_ret)
+__EXPORT_THUNK(srso_untrain_ret)
+
+ENTRY(__x86_return_thunk)
+	ALTERNATIVE_2 "jmp __ret", "call srso_safe_ret", X86_FEATURE_SRSO, \
+			"call srso_safe_ret_alias", X86_FEATURE_SRSO_ALIAS
+	int3
+ENDPROC(__x86_return_thunk)
 EXPORT_SYMBOL(__x86_return_thunk)

@@ -945,6 +945,13 @@ static inline int mpx_disable_management(void)
 extern u16 amd_get_nb_id(int cpu);
 extern u32 amd_get_nodes_per_socket(void);
 
+#ifdef CONFIG_CPU_SUP_AMD
+extern bool cpu_has_ibpb_brtype_microcode(void);
+#else
+bool cpu_has_ibpb_brtype_microcode(void) { return false;}
+#endif
+
+
 static inline uint32_t hypervisor_cpuid_base(const char *sig, uint32_t leaves)
 {
 	uint32_t base, eax, signature[3];
