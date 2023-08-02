@@ -766,12 +766,6 @@ static void svc_tcp_listen_data_ready(struct sock *sk)
 	dprintk("svc: socket %p TCP (listen) state change %d\n",
 		sk, sk->sk_state);
 
-	if (svsk) {
-		/* Refer to svc_setup_socket() for details. */
-		rmb();
-		svsk->sk_odata(sk);
-	}
-
 	/*
 	 * This callback may called twice when a new connection
 	 * is established as a child socket inherits everything
@@ -780,14 +774,18 @@ static void svc_tcp_listen_data_ready(struct sock *sk)
 	 *    when one of child sockets become ESTABLISHED.
 	 * 2) data_ready method of the child socket may be called
 	 *    when it receives data before the socket is accepted.
-	 * In case of 2, we should ignore it silently.
+	 * In case of 2, we should ignore it silently and DO NOT
+	 * dereference svsk.
 	 */
-	if (sk->sk_state == TCP_LISTEN) {
-		if (svsk) {
-			set_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
-			svc_xprt_enqueue(&svsk->sk_xprt);
-		} else
-			printk("svc: socket %p: no user data\n", sk);
+	if (sk->sk_state != TCP_LISTEN)
+		return;
+
+	if (svsk) {
+		/* Refer to svc_setup_socket() for details. */
+		rmb();
+		svsk->sk_odata(sk);
+		set_bit(XPT_CONN, &svsk->sk_xprt.xpt_flags);
+		svc_xprt_enqueue(&svsk->sk_xprt);
 	}
 }
 
@@ -1439,8 +1437,9 @@ out:
 EXPORT_SYMBOL_GPL(svc_alien_sock);
 
 /**
- * svc_addsock - add a listener socket to an RPC service
+ * svc_addsock5 - add a listener socket to an RPC service
  * @serv: pointer to RPC service to which to add a new listener
+ * @net: caller's network namespace
  * @fd: file descriptor of the new listener
  * @name_return: pointer to buffer to fill in with name of listener
  * @len: size of the buffer
@@ -1449,8 +1448,8 @@ EXPORT_SYMBOL_GPL(svc_alien_sock);
  * Name is terminated with '\n'.  On error, returns a negative errno
  * value.
  */
-int svc_addsock(struct svc_serv *serv, const int fd, char *name_return,
-		const size_t len)
+int svc_addsock5(struct svc_serv *serv, struct net *net, const int fd,
+		char *name_return, const size_t len)
 {
 	int err = 0;
 	struct socket *so = sockfd_lookup(fd, &err);
@@ -1461,6 +1460,11 @@ int svc_addsock(struct svc_serv *serv, const int fd, char *name_return,
 
 	if (!so)
 		return err;
+	if (net) {
+		err = -EINVAL;
+		if (sock_net(so->sk) != net)
+			goto out;
+	}
 	err = -EAFNOSUPPORT;
 	if ((so->sk->sk_family != PF_INET) && (so->sk->sk_family != PF_INET6))
 		goto out;
@@ -1488,8 +1492,13 @@ out:
 	sockfd_put(so);
 	return err;
 }
+EXPORT_SYMBOL_GPL(svc_addsock5);
+int svc_addsock(struct svc_serv *serv, const int fd,
+		char *name_return, const size_t len)
+{
+	return svc_addsock5(serv, NULL, fd, name_return, len);
+}
 EXPORT_SYMBOL_GPL(svc_addsock);
-
 /*
  * Create socket for RPC service.
  */
