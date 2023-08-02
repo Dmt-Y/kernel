@@ -486,7 +486,7 @@ static const char *table_lookup_model(struct cpuinfo_x86 *c)
 }
 
 __u32 cpu_caps_cleared[NCAPINTS + NBUGINTS];
-__u32 cpu_caps_set[NCAPINTS + NBUGINTS];
+__u32 cpu_caps_set[NCAPINTS + NBUGINTS + NEXTCAPINTS];
 
 void load_percpu_segment(int cpu)
 {
@@ -749,6 +749,10 @@ static void apply_forced_caps(struct cpuinfo_x86 *c)
 		c->x86_capability[i] &= ~cpu_caps_cleared[i];
 		c->x86_capability[i] |= cpu_caps_set[i];
 	}
+
+	for (i = 0; i < NEXTCAPINTS; i++) {
+		c->x86_ext_capability[i] |= cpu_caps_set[NCAPINTS + NBUGINTS + i];
+	}
 }
 
 static void init_speculation_control(struct cpuinfo_x86 *c)
@@ -888,8 +892,12 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 	if (c->extended_cpuid_level >= 0x8000000a)
 		c->x86_capability[CPUID_8000_000A_EDX] = cpuid_edx(0x8000000a);
 
+	/*
+	 * Every new leaf should go into the extended caps array, consult
+	 * cpuid_leafs enum for more info
+	 */
 	if (c->extended_cpuid_level >= 0x80000021)
-		c->x86_capability[CPUID_8000_0021_EAX] = cpuid_eax(0x80000021);
+		c->x86_ext_capability[CPUID_IDX(CPUID_8000_0021_EAX)] = cpuid_eax(0x80000021);
 
 	init_scattered_cpuid_features(c);
 	init_speculation_control(c);

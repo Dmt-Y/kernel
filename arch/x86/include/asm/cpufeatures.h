@@ -12,8 +12,9 @@
 /*
  * Defines x86 CPU feature bits
  */
-#define NCAPINTS	21      /* N 32-bit words worth of info */
+#define NCAPINTS	19      /* N 32-bit words worth of info */
 #define NBUGINTS	1	/* N 32-bit bug flags */
+#define NEXTCAPINTS     2       /* N 32-bit words which come after NCAPINTS */
 
 /*
  * Note: If the comment begins with a quoted string, that string is used

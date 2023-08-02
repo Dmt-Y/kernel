@@ -29,8 +29,17 @@ enum cpuid_leafs
 	CPUID_7_ECX,
 	CPUID_8000_0007_EBX,
 	CPUID_7_EDX,
+	CPUID_MAX = CPUID_7_EDX,
+	/*
+	 * Everything below should go into the extended caps array to preserve
+	 * kABI
+	 */
 	CPUID_8000_0021_EAX,
 };
+
+#define CPUID_IDX(x) \
+	__builtin_choose_expr((x) > CPUID_MAX, (x) - CPUID_MAX - 1, (x))
+#define IS_EXT_CPUID_BIT(bit) ((bit>>5) > NCAPINTS)
 
 #ifdef CONFIG_X86_FEATURE_NAMES
 extern const char * const x86_cap_flags[NCAPINTS*32];
@@ -48,9 +57,10 @@ extern const char * const x86_power_flags[32];
  */
 extern const char * const x86_bug_flags[NBUGINTS*32];
 
-#define test_cpu_cap(c, bit)						\
-	 test_bit(bit, (unsigned long *)((c)->x86_capability))
-
+#define test_cpu_cap(c, bit) \
+	(IS_EXT_CPUID_BIT((bit)) ? test_bit((bit) - (NCAPINTS*32), \
+				(unsigned long *)((c)->x86_ext_capability)) : \
+				test_bit(bit, (unsigned long *)((c)->x86_capability)))
 /*
  * There are 32 bits/features in each mask word.  The high bits
  * (selected with (bit>>5) give us the word number and the low 5
@@ -81,10 +91,8 @@ extern const char * const x86_bug_flags[NBUGINTS*32];
 	   CHECK_BIT_IN_MASK_WORD(REQUIRED_MASK, 16, feature_bit) ||	\
 	   CHECK_BIT_IN_MASK_WORD(REQUIRED_MASK, 17, feature_bit) ||	\
 	   CHECK_BIT_IN_MASK_WORD(REQUIRED_MASK, 18, feature_bit) ||	\
-	   CHECK_BIT_IN_MASK_WORD(REQUIRED_MASK, 19, feature_bit) ||	\
-	   CHECK_BIT_IN_MASK_WORD(REQUIRED_MASK, 20, feature_bit) ||	\
 	   REQUIRED_MASK_CHECK					  ||	\
-	   BUILD_BUG_ON_ZERO(NCAPINTS != 21))
+	   BUILD_BUG_ON_ZERO(NCAPINTS != 19))
 
 #define DISABLED_MASK_BIT_SET(feature_bit)				\
 	 ( CHECK_BIT_IN_MASK_WORD(DISABLED_MASK,  0, feature_bit) ||	\
@@ -106,10 +114,8 @@ extern const char * const x86_bug_flags[NBUGINTS*32];
 	   CHECK_BIT_IN_MASK_WORD(DISABLED_MASK, 16, feature_bit) ||	\
 	   CHECK_BIT_IN_MASK_WORD(DISABLED_MASK, 17, feature_bit) ||	\
 	   CHECK_BIT_IN_MASK_WORD(DISABLED_MASK, 18, feature_bit) ||	\
-	   CHECK_BIT_IN_MASK_WORD(DISABLED_MASK, 19, feature_bit) ||	\
-	   CHECK_BIT_IN_MASK_WORD(DISABLED_MASK, 20, feature_bit) ||	\
 	   DISABLED_MASK_CHECK					  ||	\
-	   BUILD_BUG_ON_ZERO(NCAPINTS != 21))
+	   BUILD_BUG_ON_ZERO(NCAPINTS != 19))
 
 #define cpu_has(c, bit)							\
 	(__builtin_constant_p(bit) && REQUIRED_MASK_BIT_SET(bit) ? 1 :	\
@@ -138,8 +144,15 @@ extern void setup_clear_cpu_cap(unsigned int bit);
 extern void clear_cpu_cap(struct cpuinfo_x86 *c, unsigned int bit);
 
 #define setup_force_cpu_cap(bit) do { \
-	set_cpu_cap(&boot_cpu_data, bit);	\
-	set_bit(bit, (unsigned long *)cpu_caps_set);	\
+	if (IS_EXT_CPUID_BIT(bit)) {					      \
+		set_bit(bit - (NCAPINTS*32),						      \
+			(unsigned long *)&cpu_caps_set[NCAPINTS + NBUGINTS]); \
+		set_bit(bit - (NCAPINTS*32),                                 \
+			(unsigned long *)(&boot_cpu_data)->x86_ext_capability); \
+	} else {							      \
+		set_cpu_cap(&boot_cpu_data, bit);			      \
+		set_bit(bit, (unsigned long *)cpu_caps_set);		      \
+	}								      \
 } while (0)
 
 #define setup_force_cpu_bug(bit) setup_force_cpu_cap(bit)
