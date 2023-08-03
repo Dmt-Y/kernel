@@ -2278,7 +2278,9 @@ static void svm_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 
 	if (sd->current_vmcb != svm->vmcb) {
 		sd->current_vmcb = svm->vmcb;
-		indirect_branch_prediction_barrier();
+
+		if (!cpu_feature_enabled(X86_FEATURE_IBPB_ON_VMEXIT))
+			indirect_branch_prediction_barrier();
 	}
 	avic_vcpu_load(vcpu, cpu);
 }
@@ -5705,6 +5707,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 #endif
 
 		ALTERNATIVE("", "call zen_untrain_ret", X86_FEATURE_UNRET)
+		ALTERNATIVE("", "call entry_ibpb", X86_FEATURE_IBPB_ON_VMEXIT)
 
 		/*
 		* Clear host registers marked as clobbered to prevent
