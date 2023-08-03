@@ -435,6 +435,7 @@ static int add_all_parents(struct btrfs_root *root, struct btrfs_path *path,
 	u64 disk_byte;
 	u64 wanted_disk_byte = ref->wanted_disk_byte;
 	u64 count = 0;
+	u8 type;
 
 	if (level != 0) {
 		eb = path->nodes[level];
@@ -467,6 +468,9 @@ static int add_all_parents(struct btrfs_root *root, struct btrfs_path *path,
 			break;
 
 		fi = btrfs_item_ptr(eb, slot, struct btrfs_file_extent_item);
+		type = btrfs_file_extent_type(eb, fi);
+		if (type == BTRFS_FILE_EXTENT_INLINE)
+			goto next;
 		disk_byte = btrfs_file_extent_disk_bytenr(eb, fi);
 
 		if (disk_byte == wanted_disk_byte) {
