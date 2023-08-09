@@ -867,7 +867,7 @@ int cxgb4_init_tc_flower(struct adapter *adap)
 void cxgb4_cleanup_tc_flower(struct adapter *adap)
 {
 	if (adap->flower_stats_timer.function)
-		del_timer_sync(&adap->flower_stats_timer);
+		timer_shutdown_sync(&adap->flower_stats_timer);
 	rhashtable_destroy(&adap->flower_tbl);
 	adap->tc_flower_initialized = false;
 }
