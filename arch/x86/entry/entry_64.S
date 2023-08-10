@@ -867,7 +867,9 @@ ENTRY(switch_to_thread_stack)
 	movq	%rsp, %rdi
 	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp
 
+	pushq %rax
 	UNTRAIN_RET
+	popq %rax
 
 	UNWIND_HINT sp_offset=16 sp_reg=ORC_REG_DI
 
