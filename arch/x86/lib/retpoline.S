@@ -80,7 +80,7 @@ __EXPORT_THUNK(srso_untrain_ret_alias)
 .globl srso_safe_ret_alias;
 srso_safe_ret_alias:
 #ifdef CONFIG_CPU_SRSO
-	add $8, %_ASM_SP
+	lea 8(%_ASM_SP), %_ASM_SP
 	UNWIND_HINT_FUNC
 #endif
 	ret
@@ -163,7 +163,7 @@ __EXPORT_THUNK(zen_untrain_ret)
  * SRSO untraining sequence for Zen1/2, similar to zen_untrain_ret()
  * above. On kernel entry, srso_untrain_ret() is executed which is a
  *
- * movabs $0xccccccc308c48348,%rax
+ * movabs $0xccccc30824648d48,%rax
  *
  * and when the return thunk executes the inner label srso_safe_ret()
  * later, it is a stack manipulation and a RET which is mispredicted and
@@ -177,9 +177,8 @@ srso_untrain_ret:
 
 .globl srso_safe_ret;
 srso_safe_ret:
-	add $8, %_ASM_SP
+	lea 8(%_ASM_SP), %_ASM_SP
 	ret
-	int3
 	int3
 	int3
 	lfence
