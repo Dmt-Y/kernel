@@ -174,7 +174,7 @@
  * return thunk isn't mapped into the userspace tables (then again, AMD
  * typically has NO_MELTDOWN).
  *
- * While zen_untrain_ret() doesn't clobber anything but requires stack,
+ * While retbleed_untrain_ret() doesn't clobber anything but requires stack,
  * entry_ibpb() will clobber AX, CX, DX.
  *
  * As such, this must be placed after every *SWITCH_TO_KERNEL_CR3 at a point
@@ -183,7 +183,7 @@
 .macro UNTRAIN_RET
 #ifdef CONFIG_RETPOLINE
 	ALTERNATIVE_2 "",						\
-	              "call zen_untrain_ret", X86_FEATURE_UNRET,	\
+	              "call retbleed_untrain_ret", X86_FEATURE_UNRET,	\
 		      "call entry_ibpb", X86_FEATURE_ENTRY_IBPB
 #endif
 
@@ -211,7 +211,7 @@
 #ifdef CONFIG_X86_64
 
 extern void __x86_return_thunk(void);
-extern void zen_untrain_ret(void);
+extern void retbleed_untrain_ret(void);
 extern void srso_untrain_ret(void);
 extern void srso_untrain_ret_alias(void);
 extern void entry_ibpb(void);
