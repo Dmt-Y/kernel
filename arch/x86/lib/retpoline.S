@@ -10,7 +10,7 @@
 #include <asm/nops.h>
 
 .macro THUNK reg
-	.section .text.__x86.indirect_thunk
+	.section .text..__x86.indirect_thunk
 
 ENTRY(__x86_indirect_thunk_\reg)
 	CFI_STARTPROC
@@ -63,7 +63,7 @@ GENERATE_THUNK(r15)
  * As a result, srso_safe_ret_alias() becomes a safe return.
  */
 #ifdef CONFIG_CPU_SRSO
-	.section .text.__x86.rethunk_untrain
+	.section .text..__x86.rethunk_untrain
 
 .globl srso_untrain_ret_alias;
 srso_untrain_ret_alias:
@@ -73,7 +73,7 @@ srso_untrain_ret_alias:
 ENDPROC(srso_untrain_ret_alias)
 __EXPORT_THUNK(srso_untrain_ret_alias)
 
-	.section .text.__x86.rethunk_safe
+	.section .text..__x86.rethunk_safe
 #endif
 
 /* Needs a definition for the __x86_return_thunk alternative below. */
@@ -93,7 +93,7 @@ ENDPROC(srso_safe_ret_alias)
  * for the compiler to generate JMPs to it.
  */
 
-	.section .text.__x86.return_thunk
+	.section .text..__x86.return_thunk
 
 /*
  * Safety details here pertain to the AMD Zen{1,2} microarchitecture:
