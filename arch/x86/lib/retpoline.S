@@ -183,7 +183,7 @@ srso_safe_ret:
 	int3
 	lfence
 	call srso_safe_ret
-	int3
+	ud2
 ENDPROC(srso_safe_ret)
 ENDPROC(srso_untrain_ret)
 __EXPORT_THUNK(srso_untrain_ret)
@@ -192,6 +192,6 @@ ENTRY(__x86_return_thunk)
 	UNWIND_HINT_FUNC
 	ALTERNATIVE_2 "jmp __ret", "call srso_safe_ret", X86_FEATURE_SRSO, \
 			"call srso_safe_ret_alias", X86_FEATURE_SRSO_ALIAS
-	int3
+	ud2
 ENDPROC(__x86_return_thunk)
 EXPORT_SYMBOL(__x86_return_thunk)
