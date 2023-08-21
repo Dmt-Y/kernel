@@ -121,10 +121,8 @@ SECTIONS
 #endif
 
 #ifdef CONFIG_RETPOLINE
-		__indirect_thunk_start = .;
 		*(.text..__x86.indirect_thunk)
 		*(.text..__x86.return_thunk)
-		__indirect_thunk_end = .;
 #endif
 		ALIGN_ENTRY_TEXT_BEGIN
 #ifdef CONFIG_CPU_SRSO
