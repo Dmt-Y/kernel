@@ -190,6 +190,17 @@
 
 #else /* __ASSEMBLY__ */
 
+#if defined(CONFIG_RETPOLINE) || defined(CONFIG_CPU_SRSO)
+#define UNTRAIN_RET_VM						\
+	ALTERNATIVE_2(						\
+	"",							\
+	"call entry_untrain_ret", X86_FEATURE_UNRET,		\
+	"call entry_ibpb", X86_FEATURE_IBPB_ON_VMEXIT)
+#else
+#define UNTRAIN_RET_VM
+#endif
+
+
 #define ANNOTATE_NOSPEC_ALTERNATIVE				\
 	"999:\n\t"						\
 	".pushsection .discard.nospec\n\t"			\

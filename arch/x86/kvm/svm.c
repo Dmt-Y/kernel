@@ -5705,9 +5705,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 		"mov %%r14, %c[r14](%[svm]) \n\t"
 		"mov %%r15, %c[r15](%[svm]) \n\t"
 #endif
-
-		ALTERNATIVE("", "call zen_untrain_ret", X86_FEATURE_UNRET)
-		ALTERNATIVE("", "call entry_ibpb", X86_FEATURE_IBPB_ON_VMEXIT)
+		UNTRAIN_RET_VM
 
 		/*
 		* Clear host registers marked as clobbered to prevent
