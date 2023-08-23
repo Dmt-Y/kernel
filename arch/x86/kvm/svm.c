@@ -53,6 +53,7 @@
 #include <asm/spec-ctrl.h>
 #include <asm/cpu_device_id.h>
 #include <asm/nospec-branch.h>
+#include <asm/processor.h>
 
 #include <asm/virtext.h>
 #include "trace.h"
@@ -5658,6 +5659,8 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * being speculatively taken.
 	 */
 	x86_spec_ctrl_set_guest(svm->spec_ctrl, svm->virt_spec_ctrl);
+
+	amd_clear_divider();
 
 	local_irq_enable();
 
