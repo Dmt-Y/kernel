@@ -950,8 +950,10 @@ extern u32 amd_get_nodes_per_socket(void);
 
 #ifdef CONFIG_CPU_SUP_AMD
 extern bool cpu_has_ibpb_brtype_microcode(void);
+extern void amd_clear_divider(void);
 #else
 bool cpu_has_ibpb_brtype_microcode(void) { return false;}
+static inline void amd_clear_divider(void)		{ }
 #endif
 
 
