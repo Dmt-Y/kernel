@@ -2472,8 +2472,10 @@ static void xs_tcp_setup_socket(struct work_struct *work)
 		 */
 		xprt_wake_pending_tasks(xprt, status);
 		xs_tcp_force_close(xprt);
+		clear_bit(XPRT_SOCK_CONNECTING, &transport->sock_state);
 		goto out;
 	}
+	clear_bit(XPRT_SOCK_CONNECTING, &transport->sock_state);
 	status = -EAGAIN;
 out:
 	xprt_clear_connecting(xprt);
