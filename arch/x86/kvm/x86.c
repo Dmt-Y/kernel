@@ -518,8 +518,6 @@ void kvm_requeue_exception_e(struct kvm_vcpu *vcpu, unsigned nr, u32 error_code)
 }
 EXPORT_SYMBOL_GPL(kvm_requeue_exception_e);
 
-extern bool gds_ucode_mitigated(void);
-
 /*
  * Checks if cpl <= required_cpl; if true, return true.  Otherwise queue
  * a #GP and return false.

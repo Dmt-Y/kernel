@@ -1976,7 +1976,7 @@ int nfs3_decode_dirent(struct xdr_stream *xdr, struct nfs_entry *entry,
 	entry->prev_cookie = entry->cookie;
 	error = decode_cookie3(xdr, &entry->cookie);
 	if (unlikely(error))
-		return -EAGAIN;
+		return error == -ENAMETOOLONG ? -ENAMETOOLONG : -EAGAIN;
 
 	entry->d_type = DT_UNKNOWN;
 
