@@ -44,21 +44,6 @@ static inline void __buffer_unlink(struct journal_head *jh)
 }
 
 /*
- * Try to release a checkpointed buffer from its transaction.
- * Returns 1 if we released it and 2 if we also released the
- * whole transaction.
- *
- * Requires j_list_lock
- */
-static inline bool __cp_buffer_busy(struct journal_head *jh)
-{
-	struct buffer_head *bh = jh2bh(jh);
-
-	return jh->b_transaction || buffer_locked(bh) || buffer_dirty(bh) ||
-	       buffer_write_io_error(bh);
-}
-
-/*
  * __jbd2_log_wait_for_space: wait until there is space in the journal.
  *
  * Called under j-state_lock *only*.  It will be unlocked if we have to wait
