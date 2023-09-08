@@ -375,7 +375,7 @@ static int journal_clean_one_cp_list(struct journal_head *jh, bool destroy)
 		} else {
 			ret = jbd2_journal_try_remove_checkpoint(jh);
 			if (ret < 0)
-				continue;
+				break;
 		}
 		if (ret)
 			return ret;
