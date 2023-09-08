@@ -656,7 +656,8 @@ static size_t ext4_xattr_free_space(struct ext4_xattr_entry *last,
 }
 
 static int
-ext4_xattr_set_entry(struct ext4_xattr_info *i, struct ext4_xattr_search *s)
+ext4_xattr_set_entry(struct ext4_xattr_info *i, struct ext4_xattr_search *s,
+		     struct inode *inode, bool is_block)
 {
 	struct ext4_xattr_entry *last, *next;
 	size_t free, min_offs = s->end - s->base, name_len = strlen(i->name);
@@ -744,6 +745,23 @@ ext4_xattr_set_entry(struct ext4_xattr_info *i, struct ext4_xattr_search *s)
 			memmove(s->here, (void *)s->here + size,
 				(void *)last - (void *)s->here + sizeof(__u32));
 			memset(last, 0, size);
+
+			/*
+			 * Update i_inline_off - moved ibody region might
+			 * contain system.data attribute.  Handling a failure
+			 * here won't cause other complications for setting an
+			 * xattr.
+			 */
+			if (!is_block && ext4_has_inline_data(inode)) {
+				int ret;
+
+				ret = ext4_find_inline_data_nolock(inode);
+				if (ret) {
+					ext4_warning_inode(inode,
+						"unable to update i_inline_off");
+					return ret;
+				}
+			}
 		}
 	}
 
@@ -858,7 +876,7 @@ ext4_xattr_block_set(handle_t *handle, struct inode *inode,
 				goto clone_block;
 			}
 			ea_bdebug(bs->bh, "modifying in-place");
-			error = ext4_xattr_set_entry(i, s);
+			error = ext4_xattr_set_entry(i, s, inode, true);
 			if (!error) {
 				if (!IS_LAST_ENTRY(s->first))
 					ext4_xattr_rehash(header(s->base),
@@ -905,7 +923,7 @@ clone_block:
 		s->end = s->base + sb->s_blocksize;
 	}
 
-	error = ext4_xattr_set_entry(i, s);
+	error = ext4_xattr_set_entry(i, s, inode, true);
 	if (error == -EFSCORRUPTED)
 		goto bad_block;
 	if (error)
@@ -1092,7 +1110,7 @@ int ext4_xattr_ibody_inline_set(handle_t *handle, struct inode *inode,
 
 	if (EXT4_I(inode)->i_extra_isize == 0)
 		return -ENOSPC;
-	error = ext4_xattr_set_entry(i, s);
+	error = ext4_xattr_set_entry(i, s, inode, false);
 	if (error)
 		return error;
 	header = IHDR(inode, ext4_raw_inode(&is->iloc));
@@ -1117,7 +1135,7 @@ static int ext4_xattr_ibody_set(struct inode *inode,
 	if (!EXT4_INODE_HAS_XATTR_SPACE(inode))
 		return -ENOSPC;
 
-	error = ext4_xattr_set_entry(i, s);
+	error = ext4_xattr_set_entry(i, s, inode, false);
 	if (error)
 		return error;
 	header = IHDR(inode, ext4_raw_inode(&is->iloc));
