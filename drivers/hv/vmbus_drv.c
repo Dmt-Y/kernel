@@ -2086,7 +2086,7 @@ static int vmbus_acpi_add(struct acpi_device *device)
 	 * Some ancestor of the vmbus acpi device (Gen1 or Gen2
 	 * firmware) is the VMOD that has the mmio ranges. Get that.
 	 */
-	for (ancestor = device->parent; ancestor; ancestor = ancestor->parent) {
+	for (ancestor = device->parent; ancestor && ancestor->handle != ACPI_ROOT_OBJECT; ancestor = ancestor->parent) {
 		result = acpi_walk_resources(ancestor->handle, METHOD_NAME__CRS,
 					     vmbus_walk_resources, NULL);
 
