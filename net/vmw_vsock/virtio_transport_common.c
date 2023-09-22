@@ -882,6 +882,9 @@ virtio_transport_recv_connected(struct sock *sk,
 
 		sk->sk_data_ready(sk);
 		return err;
+	case VIRTIO_VSOCK_OP_CREDIT_REQUEST:
+		virtio_transport_send_credit_update(vsk, VIRTIO_VSOCK_TYPE_STREAM, NULL);
+		break;
 	case VIRTIO_VSOCK_OP_CREDIT_UPDATE:
 		sk->sk_write_space(sk);
 		break;
