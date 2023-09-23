@@ -2713,6 +2713,7 @@ static void free_unused_bufs(struct virtnet_info *vi)
 			else
 				xdp_return_frame(ptr_to_xdp(buf));
 		}
+		cond_resched();
 	}
 
 	for (i = 0; i < vi->max_queue_pairs; i++) {
@@ -2727,6 +2728,7 @@ static void free_unused_bufs(struct virtnet_info *vi)
 				put_page(virt_to_head_page(buf));
 			}
 		}
+		cond_resched();
 	}
 }
 
