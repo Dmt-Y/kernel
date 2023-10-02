@@ -15,6 +15,8 @@
 #define NCAPINTS	19      /* N 32-bit words worth of info */
 #define NBUGINTS	1	/* N 32-bit bug flags */
 #define NEXTCAPINTS     2       /* N 32-bit words which come after NCAPINTS */
+#define NEXTBUGINTS     1       /* N 32-bit words which come after NEXTCAPINTS */
+
 
 /*
  * Note: If the comment begins with a quoted string, that string is used
@@ -427,7 +429,6 @@
 #define X86_BUG_GDS			X86_BUG(30) /* CPU is affected by Gather Data Sampling */
 
 /* First extended bug word */
-#define X86_BUG_DIV0                    X86_BUG(1*32 + 0) /* AMD DIV0 speculation bug */
-
+#define X86_BUG_DIV0                   X86_BUG(1*32 + 0) /* AMD DIV0 speculation bug */
 
 #endif /* _ASM_X86_CPUFEATURES_H */

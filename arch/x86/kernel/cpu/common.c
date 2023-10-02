@@ -486,7 +486,7 @@ static const char *table_lookup_model(struct cpuinfo_x86 *c)
 }
 
 __u32 cpu_caps_cleared[NCAPINTS + NBUGINTS];
-__u32 cpu_caps_set[NCAPINTS + NBUGINTS + NEXTCAPINTS];
+__u32 cpu_caps_set[NCAPINTS + NBUGINTS + NEXTCAPINTS + NEXTBUGINTS];
 
 void load_percpu_segment(int cpu)
 {
@@ -750,7 +750,7 @@ static void apply_forced_caps(struct cpuinfo_x86 *c)
 		c->x86_capability[i] |= cpu_caps_set[i];
 	}
 
-	for (i = 0; i < NEXTCAPINTS; i++) {
+	for (i = 0; i < NEXTCAPINTS + NEXTBUGINTS; i++) {
 		c->x86_ext_capability[i] |= cpu_caps_set[NCAPINTS + NBUGINTS + i];
 	}
 }
