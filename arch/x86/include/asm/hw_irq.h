@@ -77,8 +77,10 @@ enum irq_alloc_type {
 	X86_IRQ_ALLOC_TYPE_MSI,
 	X86_IRQ_ALLOC_TYPE_MSIX,
 	X86_IRQ_ALLOC_TYPE_DMAR,
-	X86_IRQ_ALLOC_TYPE_AMDVI,
 	X86_IRQ_ALLOC_TYPE_UV,
+#ifndef __GENKSYMS__
+	X86_IRQ_ALLOC_TYPE_AMDVI,
+#endif
 };
 
 struct irq_alloc_info {
@@ -138,9 +140,11 @@ struct irq_alloc_info {
 			struct msi_desc *desc;
 		};
 #endif
+#ifndef __GENKSYMS__
 		struct {
 			struct amd_iommu *amd_iommu;
 		};
+#endif
 	};
 };
 
