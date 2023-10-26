@@ -523,9 +523,9 @@ void virtio_crypto_ablkcipher_finalize_req(
 	struct ablkcipher_request *req,
 	int err)
 {
-	crypto_finalize_cipher_request(vc_req->dataq->engine, req, err);
-
 	virtcrypto_clear_request(vc_req);
+
+	crypto_finalize_cipher_request(vc_req->dataq->engine, req, err);
 }
 
 static struct virtio_crypto_algo virtio_crypto_algs[] = { {
