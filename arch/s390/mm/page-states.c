@@ -137,7 +137,7 @@ static void mark_kernel_pud(p4d_t *p4d, unsigned long addr, unsigned long end)
 		if ((pud_val(*pud) & _REGION_ENTRY_TYPE_MASK) >=
 		    _REGION_ENTRY_TYPE_R3) {
 			page = virt_to_page(pud_val(*pud));
-			for (i = 0; i < 3; i++)
+			for (i = 0; i < 4; i++)
 				set_bit(PG_arch_1, &page[i].flags);
 		}
 		mark_kernel_pmd(pud, addr, next);
@@ -167,7 +167,7 @@ static void mark_kernel_pgd(void)
 		if ((pgd_val(*pgd) & _REGION_ENTRY_TYPE_MASK) >=
 		    _REGION_ENTRY_TYPE_R2) {
 			page = virt_to_page(pgd_val(*pgd));
-			for (i = 0; i < 3; i++)
+			for (i = 0; i < 4; i++)
 				set_bit(PG_arch_1, &page[i].flags);
 		}
 		mark_kernel_pud(pgd, addr, next);
