@@ -447,16 +447,6 @@ static void pppol2tp_put_sk(struct rcu_head *head)
  */
 static void pppol2tp_session_close(struct l2tp_session *session)
 {
-	struct pppol2tp_session *ps;
-
-	ps = l2tp_session_priv(session);
-	mutex_lock(&ps->sk_lock);
-	ps->__sk = rcu_dereference_protected(ps->sk,
-					     lockdep_is_held(&ps->sk_lock));
-	RCU_INIT_POINTER(ps->sk, NULL);
-	if (ps->__sk)
-		call_rcu(&ps->rcu, pppol2tp_put_sk);
-	mutex_unlock(&ps->sk_lock);
 }
 
 /* Really kill the session socket. (Called from sock_put() if
@@ -499,15 +489,24 @@ static int pppol2tp_release(struct socket *sock)
 	sock_orphan(sk);
 	sock->sk = NULL;
 
-	/* If the socket is associated with a session,
-	 * l2tp_session_delete will call pppol2tp_session_close which
-	 * will drop the session's ref on the socket.
-	 */
 	session = pppol2tp_sock_to_session(sk);
 	if (session) {
+		struct pppol2tp_session *ps;
+
 		l2tp_session_delete(session);
-		/* drop the ref obtained by pppol2tp_sock_to_session */
-		sock_put(sk);
+
+		ps = l2tp_session_priv(session);
+		mutex_lock(&ps->sk_lock);
+		ps->__sk = rcu_dereference_protected(ps->sk,
+						     lockdep_is_held(&ps->sk_lock));
+		RCU_INIT_POINTER(ps->sk, NULL);
+		mutex_unlock(&ps->sk_lock);
+		call_rcu(&ps->rcu, pppol2tp_put_sk);
+
+		/* Rely on the sock_put() call at the end of the function for
+		 * dropping the reference held by pppol2tp_sock_to_session().
+		 * The last reference will be dropped by pppol2tp_put_sk().
+		 */
 	}
 
 	release_sock(sk);
@@ -780,7 +779,8 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 		 */
 		mutex_lock(&ps->sk_lock);
 		if (rcu_dereference_protected(ps->sk,
-					      lockdep_is_held(&ps->sk_lock))) {
+					      lockdep_is_held(&ps->sk_lock)) ||
+		    ps->__sk) {
 			mutex_unlock(&ps->sk_lock);
 			error = -EEXIST;
 			goto end;
@@ -850,7 +850,6 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 
 out_no_ppp:
 	/* This is how we get the session context from the socket. */
-	sock_hold(sk);
 	sk->sk_user_data = session;
 	rcu_assign_pointer(ps->sk, sk);
 	mutex_unlock(&ps->sk_lock);
@@ -1709,8 +1708,11 @@ static void pppol2tp_seq_stop(struct seq_file *p, void *v)
 		return;
 
 	/* Drop reference taken by last invocation of pppol2tp_next_tunnel() */
-	if (pd->tunnel)
+	if (pd->tunnel) {
 		l2tp_tunnel_dec_refcount(pd->tunnel);
+		pd->tunnel = NULL;
+		pd->session = NULL;
+	}
 }
 
 static void pppol2tp_seq_tunnel_show(struct seq_file *m, void *v)

@@ -6092,6 +6092,9 @@ void mem_cgroup_uncharge_swap(swp_entry_t entry)
 	struct mem_cgroup *memcg;
 	unsigned short id;
 
+	if (mem_cgroup_disabled())
+		return;
+
 	if (!do_swap_account)
 		return;
 
