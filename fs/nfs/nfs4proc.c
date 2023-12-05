@@ -3193,6 +3193,7 @@ static bool nfs4_refresh_open_old_stateid(nfs4_stateid *dst,
 	u32 dst_seqid;
 	bool ret;
 	int seq, status = -EAGAIN;
+	unsigned long deadline = jiffies + 5 * HZ;
 	struct wait_queue_head *wq_head = bit_waitqueue(&state->flags,
 							NFS_STATE_CHANGE_WAIT);
 	DEFINE_WAIT(wait);
@@ -3227,10 +3228,12 @@ static bool nfs4_refresh_open_old_stateid(nfs4_stateid *dst,
 		write_sequnlock(&state->seqlock);
 		trace_nfs4_close_stateid_update_wait(state->inode, dst, 0);
 
+		status = -EAGAIN;
 		if (fatal_signal_pending(current))
 			status = -EINTR;
 		else
-			if (schedule_timeout(5*HZ) != 0)
+			if (schedule_timeout(5*HZ) != 0 &&
+			    !time_after(jiffies, deadline))
 				status = 0;
 
 		finish_wait(wq_head, &wait);
