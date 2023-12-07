@@ -19,7 +19,7 @@ extern bool cpu_smt_possible(void);
 extern int cpuhp_smt_enable(void);
 extern int cpuhp_smt_disable(enum cpuhp_smt_control ctrlval);
 #else
-# define cpu_smt_control               (CPU_SMT_ENABLED)
+# define cpu_smt_control               (CPU_SMT_NOT_SUPPORTED)
 # define cpu_smt_num_threads 1
 static inline void cpu_smt_disable(bool force) { }
 static inline void cpu_smt_set_num_threads(unsigned int num_threads,
