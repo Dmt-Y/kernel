@@ -2889,10 +2889,10 @@
 
 	nohugeiomap	[KNL,x86] Disable kernel huge I/O mappings.
 
-	nosmt		[KNL,S390] Disable symmetric multithreading (SMT).
+	nosmt		[KNL,PPC,S390] Disable symmetric multithreading (SMT).
 			Equivalent to smt=1.
 
-			[KNL,x86] Disable symmetric multithreading (SMT).
+			[KNL,x86,PPC] Disable symmetric multithreading (SMT).
 			nosmt=force: Force disable SMT, similar to disabling
 				     it in the BIOS except that some of the
 				     resource partitioning effects which are
