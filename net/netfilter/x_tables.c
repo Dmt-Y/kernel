@@ -599,7 +599,14 @@ int xt_compat_calc_jump(u_int8_t af, unsigned int offset)
 }
 EXPORT_SYMBOL_GPL(xt_compat_calc_jump);
 
-int xt_compat_init_offsets(u8 af, unsigned int number)
+void xt_compat_init_offsets(u_int8_t af, unsigned int number)
+{
+	xt[af].number = number;
+	xt[af].cur = 0;
+}
+EXPORT_SYMBOL(xt_compat_init_offsets);
+
+int __xt_compat_init_offsets(u8 af, unsigned int number)
 {
 	size_t mem;
 
@@ -622,7 +629,7 @@ int xt_compat_init_offsets(u8 af, unsigned int number)
 
 	return 0;
 }
-EXPORT_SYMBOL(xt_compat_init_offsets);
+EXPORT_SYMBOL(__xt_compat_init_offsets);
 
 int xt_compat_match_offset(const struct xt_match *match)
 {

@@ -955,7 +955,7 @@ static int compat_table_info(const struct xt_table_info *info,
 	memcpy(newinfo, info, offsetof(struct xt_table_info, entries));
 	newinfo->initial_entries = 0;
 	loc_cpu_entry = info->entries;
-	ret = xt_compat_init_offsets(AF_INET6, info->number);
+	ret = __xt_compat_init_offsets(AF_INET6, info->number);
 	if (ret)
 		return ret;
 	xt_entry_foreach(iter, loc_cpu_entry, info->size) {
@@ -1432,7 +1432,7 @@ translate_compat_table(struct net *net,
 
 	j = 0;
 	xt_compat_lock(AF_INET6);
-	ret = xt_compat_init_offsets(AF_INET6, compatr->num_entries);
+	ret = __xt_compat_init_offsets(AF_INET6, compatr->num_entries);
 	if (ret)
 		goto out_unlock;
 	/* Walk through entries, checking offsets. */

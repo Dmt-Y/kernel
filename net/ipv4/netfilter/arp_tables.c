@@ -767,7 +767,7 @@ static int compat_table_info(const struct xt_table_info *info,
 	memcpy(newinfo, info, offsetof(struct xt_table_info, entries));
 	newinfo->initial_entries = 0;
 	loc_cpu_entry = info->entries;
-	ret = xt_compat_init_offsets(NFPROTO_ARP, info->number);
+	ret = __xt_compat_init_offsets(NFPROTO_ARP, info->number);
 	if (ret)
 		return ret;
 	xt_entry_foreach(iter, loc_cpu_entry, info->size) {
@@ -1169,7 +1169,7 @@ static int translate_compat_table(struct xt_table_info **pinfo,
 
 	j = 0;
 	xt_compat_lock(NFPROTO_ARP);
-	ret = xt_compat_init_offsets(NFPROTO_ARP, compatr->num_entries);
+	ret = __xt_compat_init_offsets(NFPROTO_ARP, compatr->num_entries);
 	if (ret)
 		goto out_unlock;
 	/* Walk through entries, checking offsets. */
