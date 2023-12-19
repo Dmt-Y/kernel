@@ -79,8 +79,10 @@ static void gve_get_strings(struct net_device *netdev, u32 stringset, u8 *data)
 {
 	struct gve_priv *priv = netdev_priv(netdev);
 	char *s = (char *)data;
+	int num_tx_queues;
 	int i, j;
 
+	num_tx_queues = gve_num_tx_queues(priv);
 	switch (stringset) {
 	case ETH_SS_STATS:
 		memcpy(s, *gve_gstrings_main_stats,
@@ -95,7 +97,7 @@ static void gve_get_strings(struct net_device *netdev, u32 stringset, u8 *data)
 			}
 		}
 
-		for (i = 0; i < priv->tx_cfg.num_queues; i++) {
+		for (i = 0; i < num_tx_queues; i++) {
 			for (j = 0; j < NUM_GVE_TX_CNTS; j++) {
 				snprintf(s, ETH_GSTRING_LEN,
 					 gve_gstrings_tx_stats[j], i);
@@ -122,12 +124,14 @@ static void gve_get_strings(struct net_device *netdev, u32 stringset, u8 *data)
 static int gve_get_sset_count(struct net_device *netdev, int sset)
 {
 	struct gve_priv *priv = netdev_priv(netdev);
+	int num_tx_queues;
 
+	num_tx_queues = gve_num_tx_queues(priv);
 	switch (sset) {
 	case ETH_SS_STATS:
 		return GVE_MAIN_STATS_LEN + GVE_ADMINQ_STATS_LEN +
 		       (priv->rx_cfg.num_queues * NUM_GVE_RX_CNTS) +
-		       (priv->tx_cfg.num_queues * NUM_GVE_TX_CNTS);
+		       (num_tx_queues * NUM_GVE_TX_CNTS);
 	case ETH_SS_PRIV_FLAGS:
 		return GVE_PRIV_FLAGS_STR_LEN;
 	default:
@@ -151,18 +155,20 @@ gve_get_ethtool_stats(struct net_device *netdev,
 	struct gve_priv *priv;
 	bool skip_nic_stats;
 	unsigned int start;
+	int num_tx_queues;
 	int ring;
 	int i, j;
 
 	ASSERT_RTNL();
 
 	priv = netdev_priv(netdev);
+	num_tx_queues = gve_num_tx_queues(priv);
 	report_stats = priv->stats_report->stats;
 	rx_qid_to_stats_idx = kmalloc_array(priv->rx_cfg.num_queues,
 					    sizeof(int), GFP_KERNEL);
 	if (!rx_qid_to_stats_idx)
 		return;
-	tx_qid_to_stats_idx = kmalloc_array(priv->tx_cfg.num_queues,
+	tx_qid_to_stats_idx = kmalloc_array(num_tx_queues,
 					    sizeof(int), GFP_KERNEL);
 	if (!tx_qid_to_stats_idx) {
 		kfree(rx_qid_to_stats_idx);
@@ -193,7 +199,7 @@ gve_get_ethtool_stats(struct net_device *netdev,
 		}
 	}
 	for (tx_pkts = 0, tx_bytes = 0, tx_dropped = 0, ring = 0;
-	     ring < priv->tx_cfg.num_queues; ring++) {
+	     ring < num_tx_queues; ring++) {
 		if (priv->tx) {
 			do {
 				start =
@@ -230,7 +236,7 @@ gve_get_ethtool_stats(struct net_device *netdev,
 	i = GVE_MAIN_STATS_LEN;
 
 	/* For rx cross-reporting stats, start from nic rx stats in report */
-	base_stats_idx = GVE_TX_STATS_REPORT_NUM * priv->tx_cfg.num_queues +
+	base_stats_idx = GVE_TX_STATS_REPORT_NUM * num_tx_queues +
 		GVE_RX_STATS_REPORT_NUM * priv->rx_cfg.num_queues;
 	max_stats_idx = NIC_RX_STATS_REPORT_NUM * priv->rx_cfg.num_queues +
 		base_stats_idx;
@@ -296,7 +302,7 @@ gve_get_ethtool_stats(struct net_device *netdev,
 
 	/* For tx cross-reporting stats, start from nic tx stats in report */
 	base_stats_idx = max_stats_idx;
-	max_stats_idx = NIC_TX_STATS_REPORT_NUM * priv->tx_cfg.num_queues +
+	max_stats_idx = NIC_TX_STATS_REPORT_NUM * num_tx_queues +
 		max_stats_idx;
 	/* Preprocess the stats report for tx, map queue id to start index */
 	skip_nic_stats = false;
@@ -314,7 +320,7 @@ gve_get_ethtool_stats(struct net_device *netdev,
 	}
 	/* walk TX rings */
 	if (priv->tx) {
-		for (ring = 0; ring < priv->tx_cfg.num_queues; ring++) {
+		for (ring = 0; ring < num_tx_queues; ring++) {
 			struct gve_tx_ring *tx = &priv->tx[ring];
 
 			if (gve_is_gqi(priv)) {
@@ -353,7 +359,7 @@ gve_get_ethtool_stats(struct net_device *netdev,
 			}
 		}
 	} else {
-		i += priv->tx_cfg.num_queues * NUM_GVE_TX_CNTS;
+		i += num_tx_queues * NUM_GVE_TX_CNTS;
 	}
 
 	kfree(rx_qid_to_stats_idx);
@@ -498,7 +504,9 @@ static int gve_set_priv_flags(struct net_device *netdev, u32 flags)
 {
 	struct gve_priv *priv = netdev_priv(netdev);
 	u64 ori_flags, new_flags;
+	int num_tx_queues;
 
+	num_tx_queues = gve_num_tx_queues(priv);
 	ori_flags = READ_ONCE(priv->ethtool_flags);
 	new_flags = ori_flags;
 
@@ -518,7 +526,7 @@ static int gve_set_priv_flags(struct net_device *netdev, u32 flags)
 	/* delete report stats timer. */
 	if (!(flags & BIT(0)) && (ori_flags & BIT(0))) {
 		int tx_stats_num = GVE_TX_STATS_REPORT_NUM *
-			priv->tx_cfg.num_queues;
+			num_tx_queues;
 		int rx_stats_num = GVE_RX_STATS_REPORT_NUM *
 			priv->rx_cfg.num_queues;
 
