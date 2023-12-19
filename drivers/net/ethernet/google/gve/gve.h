@@ -51,8 +51,6 @@
 
 #define GVE_XDP_ACTIONS 5
 
-#define GVE_TX_MAX_HEADER_SIZE 182
-
 /* Each slot in the desc ring has a 1:1 mapping to a slot in the data ring */
 struct gve_rx_desc_queue {
 	struct gve_rx_desc *desc_ring; /* the descriptor ring */
