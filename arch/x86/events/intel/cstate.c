@@ -547,6 +547,7 @@ static const struct x86_cpu_id intel_cstates_match[] __initconst = {
 	X86_MATCH_INTEL_FAM6_MODEL(XEON_PHI_KNM, 	&knl_cstates),
 
 	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE_L, 		&snb_cstates),
+	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE,		&snb_cstates),
 	{ },
 };
 MODULE_DEVICE_TABLE(x86cpu, intel_cstates_match);

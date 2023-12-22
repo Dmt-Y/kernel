@@ -766,6 +766,7 @@ static const struct x86_cpu_id rapl_cpu_match[] __initconst = {
 	X86_MATCH_INTEL_FAM6_MODEL(KABYLAKE,            &skl_rapl_init),
 	X86_MATCH_INTEL_FAM6_MODEL(ATOM_GOLDMONT,       &hsw_rapl_init),
 	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE_L,      	&skl_rapl_init),
+	X86_MATCH_INTEL_FAM6_MODEL(ICELAKE,      	&skl_rapl_init),
 	{},
 };
 MODULE_DEVICE_TABLE(x86cpu, rapl_cpu_match);
