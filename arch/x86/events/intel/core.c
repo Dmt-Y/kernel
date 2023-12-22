@@ -4679,7 +4679,7 @@ __init int intel_pmu_init(void)
 		break;
 
 	case INTEL_FAM6_ICELAKE_X:
-	case INTEL_FAM6_ICELAKE_XEON_D:
+	case INTEL_FAM6_ICELAKE_D:
 		pmem = true;
 		/* fall through */
 	case INTEL_FAM6_ICELAKE_L:
