@@ -1236,6 +1236,7 @@ static void tgl_uncore_imc_freerunning_init_box(struct intel_uncore_box *box)
 	/* MCHBAR is disabled */
 	if (!(mch_bar & BIT(0))) {
 		pr_warn("perf uncore: MCHBAR is disabled. Failed to map IMC free-running counters.\n");
+		pci_dev_put(pdev);
 		return;
 	}
 	mch_bar &= ~BIT(0);
@@ -1247,6 +1248,8 @@ static void tgl_uncore_imc_freerunning_init_box(struct intel_uncore_box *box)
 #endif
 
 	box->io_addr = ioremap(addr, TGL_UNCORE_PCI_IMC_MAP_SIZE);
+
+	pci_dev_put(pdev);
 }
 
 static struct intel_uncore_ops tgl_uncore_imc_freerunning_ops = {
