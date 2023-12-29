@@ -4424,6 +4424,8 @@ static void __snr_uncore_mmio_init_box(struct intel_uncore_box *box,
 
 	addr += box_ctl;
 
+	pci_dev_put(pdev);
+
 	box->io_addr = ioremap(addr, SNR_IMC_MMIO_SIZE);
 	if (!box->io_addr)
 		return;
