@@ -2558,6 +2558,7 @@ static struct nft_set *nf_tables_set_lookup(const struct nft_table *table,
 }
 
 static struct nft_set *nf_tables_set_lookup_byid(const struct net *net,
+		                                 const struct nft_table *table,
 						 const struct nlattr *nla,
 						 u8 genmask)
 {
@@ -2569,6 +2570,7 @@ static struct nft_set *nf_tables_set_lookup_byid(const struct net *net,
 			struct nft_set *set = nft_trans_set(trans);
 
 			if (id == nft_trans_set_id(trans) &&
+			    set->table == table &&
 			    nft_active_genmask(set, genmask))
 				return set;
 		}
@@ -2589,7 +2591,7 @@ struct nft_set *nft_set_lookup(const struct net *net,
 		if (!nla_set_id)
 			return set;
 
-		set = nf_tables_set_lookup_byid(net, nla_set_id, genmask);
+		set = nf_tables_set_lookup_byid(net, table, nla_set_id, genmask);
 	}
 	return set;
 }
@@ -3910,6 +3912,7 @@ static int nf_tables_newsetelem(struct net *net, struct sock *nlsk,
 	if (IS_ERR(set)) {
 		if (nla[NFTA_SET_ELEM_LIST_SET_ID]) {
 			set = nf_tables_set_lookup_byid(net,
+					ctx.table,
 					nla[NFTA_SET_ELEM_LIST_SET_ID],
 					genmask);
 		}
