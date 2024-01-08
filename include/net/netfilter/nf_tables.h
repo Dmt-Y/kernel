@@ -384,8 +384,6 @@ struct nft_set {
 	struct list_head		list;
 	struct list_head		bindings;
 	char				name[NFT_SET_MAXNAMELEN];
-	struct nft_table		*table;
-	possible_net_t			net;
 	u32				ktype;
 	u32				dtype;
 	u32				objtype;
@@ -403,6 +401,10 @@ struct nft_set {
 					genmask:2;
 	u8				klen;
 	u8				dlen;
+#ifndef __GENKSYMS__
+	struct nft_table		*table;
+	possible_net_t			net;
+#endif
 	unsigned char			data[]
 		__attribute__((aligned(__alignof__(u64))));
 };
