@@ -292,7 +292,7 @@ smb2_dump_detail(void *buf, struct TCP_Server_Info *server)
 		 shdr->Command, shdr->Status, shdr->Flags, shdr->MessageId,
 		 shdr->ProcessId);
 	if (!server->ops->check_message(buf, server->total_read, server)) {
-		cifs_server_dbg(VFS, "smb buf %p len %u\n", buf,
+		cifs_dbg(VFS, "smb buf %p len %u\n", buf,
 				server->ops->calc_smb_size(buf, server));
 	}
 #endif
