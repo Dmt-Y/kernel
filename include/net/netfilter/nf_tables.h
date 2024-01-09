@@ -359,6 +359,8 @@ void nft_unregister_set(struct nft_set_ops *ops);
  *
  *	@list: table set list node
  *	@bindings: list of set bindings
+ *	@table: table this set belongs to
+ *	@net: netnamespace this set belongs to
  * 	@name: name of the set
  * 	@ktype: key type (numeric type defined by userspace, not used in the kernel)
  * 	@dtype: data type (verdict or numeric type defined by userspace)
@@ -399,6 +401,10 @@ struct nft_set {
 					genmask:2;
 	u8				klen;
 	u8				dlen;
+#ifndef __GENKSYMS__
+	struct nft_table		*table;
+	possible_net_t			net;
+#endif
 	unsigned char			data[]
 		__attribute__((aligned(__alignof__(u64))));
 };
