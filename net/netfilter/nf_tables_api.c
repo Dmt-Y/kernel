@@ -2308,6 +2308,7 @@ err1:
 }
 
 static struct nft_rule *nft_rule_lookup_byid(const struct net *net,
+					     const struct nft_chain *chain,
 					     const struct nlattr *nla)
 {
 	u32 id = ntohl(nla_get_be32(nla));
@@ -2317,6 +2318,7 @@ static struct nft_rule *nft_rule_lookup_byid(const struct net *net,
 		struct nft_rule *rule = nft_trans_rule(trans);
 
 		if (trans->msg_type == NFT_MSG_NEWRULE &&
+		    trans->ctx.chain == chain &&
 		    id == nft_trans_rule_id(trans))
 			return rule;
 	}
@@ -2362,7 +2364,7 @@ static int nf_tables_delrule(struct net *net, struct sock *nlsk,
 
 			err = nft_delrule(&ctx, rule);
 		} else if (nla[NFTA_RULE_ID]) {
-			rule = nft_rule_lookup_byid(net, nla[NFTA_RULE_ID]);
+			rule = nft_rule_lookup_byid(net, chain, nla[NFTA_RULE_ID]);
 			if (IS_ERR(rule))
 				return PTR_ERR(rule);
 
@@ -2563,6 +2565,7 @@ static struct nft_set *nf_tables_set_lookup(const struct nft_table *table,
 }
 
 static struct nft_set *nf_tables_set_lookup_byid(const struct net *net,
+		                                 const struct nft_table *table,
 						 const struct nlattr *nla,
 						 u8 genmask)
 {
@@ -2574,6 +2577,7 @@ static struct nft_set *nf_tables_set_lookup_byid(const struct net *net,
 			struct nft_set *set = nft_trans_set(trans);
 
 			if (id == nft_trans_set_id(trans) &&
+			    set->table == table &&
 			    nft_active_genmask(set, genmask))
 				return set;
 		}
@@ -2594,7 +2598,7 @@ struct nft_set *nft_set_lookup(const struct net *net,
 		if (!nla_set_id)
 			return set;
 
-		set = nf_tables_set_lookup_byid(net, nla_set_id, genmask);
+		set = nf_tables_set_lookup_byid(net, table, nla_set_id, genmask);
 	}
 	return set;
 }
@@ -3071,6 +3075,8 @@ static int nf_tables_newset(struct net *net, struct sock *nlsk,
 	}
 
 	INIT_LIST_HEAD(&set->bindings);
+	set->table = table;
+	write_pnet(&set->net, net);
 	set->ops   = ops;
 	set->ktype = ktype;
 	set->klen  = desc.klen;
@@ -3641,12 +3647,15 @@ void nft_set_elem_destroy(const struct nft_set *set, void *elem,
 			  bool destroy_expr)
 {
 	struct nft_set_ext *ext = nft_set_elem_ext(set, elem);
+	struct nft_ctx ctx = {
+		.net	= read_pnet(&set->net),
+	};
 
 	nft_data_release(nft_set_ext_key(ext), NFT_DATA_VALUE);
 	if (nft_set_ext_exists(ext, NFT_SET_EXT_DATA))
 		nft_data_release(nft_set_ext_data(ext), set->dtype);
 	if (destroy_expr && nft_set_ext_exists(ext, NFT_SET_EXT_EXPR))
-		nf_tables_expr_destroy(NULL, nft_set_ext_expr(ext));
+		nf_tables_expr_destroy(&ctx, nft_set_ext_expr(ext));
 	if (nft_set_ext_exists(ext, NFT_SET_EXT_OBJREF))
 		(*nft_set_ext_obj(ext))->use--;
 	kfree(elem);
@@ -3656,12 +3665,13 @@ EXPORT_SYMBOL_GPL(nft_set_elem_destroy);
 /* Only called from commit path, nft_set_elem_deactivate() already deals with
  * the refcounting from the preparation phase.
  */
-static void nf_tables_set_elem_destroy(const struct nft_set *set, void *elem)
+static void nf_tables_set_elem_destroy(const struct nft_ctx *ctx,
+				       const struct nft_set *set, void *elem)
 {
 	struct nft_set_ext *ext = nft_set_elem_ext(set, elem);
 
 	if (nft_set_ext_exists(ext, NFT_SET_EXT_EXPR))
-		nf_tables_expr_destroy(NULL, nft_set_ext_expr(ext));
+		nf_tables_expr_destroy(ctx, nft_set_ext_expr(ext));
 	kfree(elem);
 }
 
@@ -3909,6 +3919,7 @@ static int nf_tables_newsetelem(struct net *net, struct sock *nlsk,
 	if (IS_ERR(set)) {
 		if (nla[NFTA_SET_ELEM_LIST_SET_ID]) {
 			set = nf_tables_set_lookup_byid(net,
+					ctx.table,
 					nla[NFTA_SET_ELEM_LIST_SET_ID],
 					genmask);
 		}
@@ -4858,7 +4869,8 @@ static void nf_tables_commit_release(struct nft_trans *trans)
 		nft_set_destroy(nft_trans_set(trans));
 		break;
 	case NFT_MSG_DELSETELEM:
-		nf_tables_set_elem_destroy(nft_trans_elem_set(trans),
+		nf_tables_set_elem_destroy(&trans->ctx,
+					   nft_trans_elem_set(trans),
 					   nft_trans_elem(trans).priv);
 		break;
 	case NFT_MSG_DELOBJ:
