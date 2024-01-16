@@ -389,11 +389,6 @@ int nvdimm_security_overwrite(struct nvdimm *nvdimm, unsigned int keyid)
 		return -EBUSY;
 	}
 
-	if (dev->driver == NULL) {
-		dev_dbg(dev, "Unable to overwrite while DIMM active.\n");
-		return -EINVAL;
-	}
-
 	rc = check_security_state(nvdimm);
 	if (rc)
 		return rc;
