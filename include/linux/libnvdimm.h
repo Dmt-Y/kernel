@@ -85,8 +85,6 @@ struct nvdimm_bus_descriptor {
 	const struct attribute_group **attr_groups;
 	unsigned long bus_dsm_mask;
 	unsigned long cmd_mask;
-	unsigned long dimm_family_mask;
-	unsigned long bus_family_mask;
 	struct module *module;
 	char *provider_name;
 	struct device_node *of_node;
@@ -94,6 +92,10 @@ struct nvdimm_bus_descriptor {
 	int (*flush_probe)(struct nvdimm_bus_descriptor *nd_desc);
 	int (*clear_to_send)(struct nvdimm_bus_descriptor *nd_desc,
 			struct nvdimm *nvdimm, unsigned int cmd, void *data);
+#ifndef __GENKSYMS__
+	unsigned long dimm_family_mask;
+	unsigned long bus_family_mask;
+#endif
 };
 
 struct nd_cmd_desc {
