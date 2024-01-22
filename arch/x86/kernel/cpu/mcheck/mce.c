@@ -609,7 +609,7 @@ static int srao_decode_notifier(struct notifier_block *nb, unsigned long val,
 	if (mce_usable_address(mce) && (mce->severity == MCE_AO_SEVERITY)) {
 		pfn = mce->addr >> PAGE_SHIFT;
 		if (!memory_failure(pfn, MCE_VECTOR, 0))
-			set_mce_nospec(pfn, whole_page(mce));
+			set_mce_nospec(pfn);
 	}
 
 	return NOTIFY_OK;
@@ -1115,7 +1115,7 @@ static int do_memory_failure(struct mce *m)
 	if (ret)
 		pr_err("Memory error not recovered");
 	else
-		set_mce_nospec(m->addr >> PAGE_SHIFT, whole_page(m));
+		set_mce_nospec(m->addr >> PAGE_SHIFT);
 	return ret;
 }
 
