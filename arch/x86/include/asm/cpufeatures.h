@@ -15,6 +15,8 @@
 #define NCAPINTS	19      /* N 32-bit words worth of info */
 #define NBUGINTS	1	/* N 32-bit bug flags */
 #define NEXTCAPINTS     2       /* N 32-bit words which come after NCAPINTS */
+#define NEXTBUGINTS     1       /* N 32-bit words which come after NEXTCAPINTS */
+
 
 /*
  * Note: If the comment begins with a quoted string, that string is used
@@ -420,10 +422,13 @@
 #define X86_BUG_ITLB_MULTIHIT		X86_BUG(23) /* CPU may incur MCE during certain page attribute changes */
 #define X86_BUG_SRBDS			X86_BUG(24) /* CPU may leak RNG bits if not mitigated */
 #define X86_BUG_MMIO_STALE_DATA		X86_BUG(25) /* CPU is affected by Processor MMIO Stale Data vulnerabilities */
-#define X86_BUG_RETBLEED		X86_BUG(26) /* CPU is affected by RETBleed */
-#define X86_BUG_EIBRS_PBRSB		X86_BUG(27) /* EIBRS is vulnerable to Post Barrier RSB Predictions */
-#define X86_BUG_SRSO			X86_BUG(28) /* AMD SRSO bug */
-#define X86_BUG_GDS			X86_BUG(29) /* CPU is affected by Gather Data Sampling */
-#define X86_BUG_DIV0                    X86_BUG(30) /* AMD DIV0 speculation bug */
+#define X86_BUG_MMIO_UNKNOWN		X86_BUG(26) /* CPU is too old and its MMIO Stale Data status is unknown */
+#define X86_BUG_RETBLEED		X86_BUG(27) /* CPU is affected by RETBleed */
+#define X86_BUG_EIBRS_PBRSB		X86_BUG(28) /* EIBRS is vulnerable to Post Barrier RSB Predictions */
+#define X86_BUG_SRSO			X86_BUG(29) /* AMD SRSO bug */
+#define X86_BUG_GDS			X86_BUG(30) /* CPU is affected by Gather Data Sampling */
+
+/* First extended bug word */
+#define X86_BUG_DIV0                   X86_BUG(1*32 + 0) /* AMD DIV0 speculation bug */
 
 #endif /* _ASM_X86_CPUFEATURES_H */

@@ -17,14 +17,14 @@ static inline int set_memory_x(unsigned long addr,  int numpages) { return 0; }
 static inline int set_memory_nx(unsigned long addr, int numpages) { return 0; }
 #endif
 
-#ifndef set_mce_nospec
-static inline int set_mce_nospec(unsigned long pfn, bool unmap)
+#ifdef CONFIG_X86_64
+int set_mce_nospec(unsigned long pfn);
+int clear_mce_nospec(unsigned long pfn);
+#else
+static inline int set_mce_nospec(unsigned long pfn)
 {
 	return 0;
 }
-#endif
-
-#ifndef clear_mce_nospec
 static inline int clear_mce_nospec(unsigned long pfn)
 {
 	return 0;
