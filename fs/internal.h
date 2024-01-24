@@ -128,8 +128,6 @@ static inline bool atime_needs_update_rcu(const struct path *path,
 /*
  * fs-writeback.c
  */
-extern void inode_io_list_del(struct inode *inode);
-
 extern long get_nr_dirty_inodes(void);
 extern int invalidate_inodes(struct super_block *, bool);
 
