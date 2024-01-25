@@ -14,6 +14,7 @@
 #include <linux/gfp.h>
 #include <linux/pci.h>
 #include <linux/vmalloc.h>
+#include <linux/set_memory.h>
 
 #include <asm/e820/api.h>
 #include <asm/processor.h>
@@ -24,7 +25,6 @@
 #include <asm/pgalloc.h>
 #include <asm/proto.h>
 #include <asm/pat.h>
-#include <asm/set_memory.h>
 
 /*
  * The current flushing context - we pass it instead of 5 arguments:
@@ -1742,6 +1742,47 @@ int set_memory_wb(unsigned long addr, int numpages)
 	return 0;
 }
 EXPORT_SYMBOL(set_memory_wb);
+
+#ifdef CONFIG_X86_64
+/* Prevent speculative access to a page by marking it not-present */
+int set_mce_nospec(unsigned long pfn)
+{
+	unsigned long decoy_addr;
+	int rc;
+
+	/*
+	 * We would like to just call:
+	 *      set_memory_XX((unsigned long)pfn_to_kaddr(pfn), 1);
+	 * but doing that would radically increase the odds of a
+	 * speculative access to the poison page because we'd have
+	 * the virtual address of the kernel 1:1 mapping sitting
+	 * around in registers.
+	 * Instead we get tricky.  We create a non-canonical address
+	 * that looks just like the one we want, but has bit 63 flipped.
+	 * This relies on set_memory_XX() properly sanitizing any __pa()
+	 * results with __PHYSICAL_MASK or PTE_PFN_MASK.
+	 */
+	decoy_addr = (pfn << PAGE_SHIFT) + (PAGE_OFFSET ^ BIT(63));
+
+	rc = set_memory_np(decoy_addr, 1);
+	if (rc)
+		pr_warn("Could not invalidate pfn=0x%lx from 1:1 map\n", pfn);
+	return rc;
+}
+
+static int set_memory_present(unsigned long *addr, int numpages)
+{
+       return change_page_attr_set(addr, numpages, __pgprot(_PAGE_PRESENT), 0);
+}
+/* Restore full speculative operation to the pfn. */
+int clear_mce_nospec(unsigned long pfn)
+{
+	unsigned long addr = (unsigned long) pfn_to_kaddr(pfn);
+
+	return set_memory_present(&addr, 1);
+}
+EXPORT_SYMBOL_GPL(clear_mce_nospec);
+#endif
 
 int set_memory_array_wb(unsigned long *addr, int addrinarray)
 {

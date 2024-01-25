@@ -23,4 +23,6 @@ void io_free_memtype(resource_size_t start, resource_size_t end);
 
 bool pat_pfn_immune_to_uc_mtrr(unsigned long pfn);
 
+bool x86_has_pat_wp(void);
+
 #endif /* _ASM_X86_PAT_H */
