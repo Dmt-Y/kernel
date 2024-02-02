@@ -536,13 +536,6 @@ bool mce_is_memory_error(struct mce *m)
 }
 EXPORT_SYMBOL_GPL(mce_is_memory_error);
 
-static bool whole_page(struct mce *m)
-{
-	if (!mca_cfg.ser || !(m->status & MCI_STATUS_MISCV))
-		return true;
-	return MCI_MISC_ADDR_LSB(m->misc) >= PAGE_SHIFT;
-}
-
 bool mce_is_correctable(struct mce *m)
 {
 	if (m->cpuvendor == X86_VENDOR_AMD && m->status & MCI_STATUS_DEFERRED)
