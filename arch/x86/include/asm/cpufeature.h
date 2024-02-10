@@ -254,7 +254,7 @@ static __always_inline __pure bool _static_cpu_has(u16 bit)
 #define boot_cpu_has_bug(bit)		cpu_has_bug(&boot_cpu_data, (bit))
 #define boot_cpu_set_bug(bit)		set_cpu_cap(&boot_cpu_data, (bit))
 
-#define MAX_CPU_FEATURES		(NCAPINTS + NEXTCAPINTS * 32)
+#define MAX_CPU_FEATURES		((NCAPINTS + NEXTCAPINTS) * 32)
 #define cpu_have_feature		boot_cpu_has
 
 #define CPU_FEATURE_TYPEFMT		"x86,ven%04Xfam%04Xmod%04X"
