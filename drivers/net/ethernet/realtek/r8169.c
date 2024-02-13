@@ -7863,6 +7863,10 @@ static void __rtl8169_resume(struct net_device *dev)
 {
 	struct rtl8169_private *tp = netdev_priv(dev);
 
+	/* Reportedly at least Asus X453MA truncates packets otherwise */
+	if (tp->mac_version == RTL_GIGA_MAC_VER_37)
+		rtl_init_rxcfg(tp);
+
 	netif_device_attach(dev);
 
 	rtl_pll_power_up(tp);
