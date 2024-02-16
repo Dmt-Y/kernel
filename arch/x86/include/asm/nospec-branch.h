@@ -188,7 +188,25 @@
 #endif
 .endm
 
+/*
+ * Macro to execute VERW instruction that mitigate transient data sampling
+ * attacks such as MDS. On affected systems a microcode update overloaded VERW
+ * instruction to also clear the CPU buffers. VERW clobbers CFLAGS.ZF.
+ *
+ * Note: Only the memory operand variant of VERW clears the CPU buffers.
+ */
+.macro CLEAR_CPU_BUFFERS
+        ALTERNATIVE "jmp .Lskip_verw_\@", "", X86_FEATURE_CLEAR_CPU_BUF
+        verw _ASM_RIP(mds_verw_sel)
+.Lskip_verw_\@:
+.endm
+
 #else /* __ASSEMBLY__ */
+
+#define CLEAR_CPU_BUFFERS \
+        ALTERNATIVE("jmp 1f\t\n", "", X86_FEATURE_CLEAR_CPU_BUF) \
+        "verw " _ASM_RIP(mds_verw_sel) " \t\n"                             \
+        "1:\t\n"
 
 #if defined(CONFIG_RETPOLINE) || defined(CONFIG_CPU_SRSO)
 #define UNTRAIN_RET_VM						\
@@ -388,6 +406,8 @@ DECLARE_STATIC_KEY_FALSE(mds_user_clear);
 DECLARE_STATIC_KEY_FALSE(mds_idle_clear);
 
 DECLARE_STATIC_KEY_FALSE(mmio_stale_data_clear);
+
+extern u16 mds_verw_sel;
 
 #include <asm/segment.h>
 
