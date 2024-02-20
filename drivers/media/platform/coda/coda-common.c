@@ -919,7 +919,7 @@ static int coda_encoder_cmd(struct file *file, void *fh,
 	flush_work(&ctx->pic_run_work);
 
 	/* If there is no buffer in flight, wake up */
-	if (ctx->qsequence == ctx->osequence) {
+	if (!ctx->streamon_out || ctx->qsequence == ctx->osequence) {
 		dst_vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx,
 					 V4L2_BUF_TYPE_VIDEO_CAPTURE);
 		dst_vq->last_buffer_dequeued = true;
