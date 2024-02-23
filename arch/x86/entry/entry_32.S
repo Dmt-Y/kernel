@@ -278,6 +278,7 @@ ENTRY(schedule_tail_wrapper)
 	pushl	%eax
 	call	schedule_tail
 	popl	%eax
+	CLEAR_CPU_BUFFERS
 
 	FRAME_END
 	RET
@@ -565,6 +566,7 @@ restore_all:
 #endif
 .Lrestore_nocheck:
 	RESTORE_REGS 4				# skip orig_eax/error_code
+	CLEAR_CPU_BUFFERS
 .Lirq_return:
 	INTERRUPT_RETURN
 
@@ -1020,6 +1022,7 @@ ENTRY(nmi)
 
 	/* Not on SYSENTER stack. */
 	call	do_nmi
+	CLEAR_CPU_BUFFERS
 	jmp	.Lrestore_all_notrace
 
 .Lnmi_from_sysenter_stack:
