@@ -1101,7 +1101,7 @@ static void init_amd(struct cpuinfo_x86 *c)
 	if (c->x86 >= 0xf)
 		set_cpu_cap(c, X86_FEATURE_K8);
 
-	if (cpu_has(c, X86_FEATURE_XMM2)) {
+	if (!cpu_has(c, X86_FEATURE_LFENCE_RDTSC) && cpu_has(c, X86_FEATURE_XMM2)) {
 		unsigned long long val;
 		int ret;
 
