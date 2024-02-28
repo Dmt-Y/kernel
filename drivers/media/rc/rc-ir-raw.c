@@ -258,7 +258,6 @@ int ir_raw_gen_manchester(struct ir_raw_event **ev, unsigned int max,
 		} else {
 			init_ir_raw_event_duration((*ev), 1, timings->leader);
 		}
-		i >>= 1;
 	} else {
 		/* continue existing signal */
 		--(*ev);
