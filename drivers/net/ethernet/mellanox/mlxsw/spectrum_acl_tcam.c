@@ -751,10 +751,12 @@ static void
 mlxsw_sp_acl_tcam_region_destroy(struct mlxsw_sp *mlxsw_sp,
 				 struct mlxsw_sp_acl_tcam_region *region)
 {
+	struct mlxsw_sp_acl_tcam *tcam = mlxsw_sp_acl_to_tcam(mlxsw_sp->acl);
+
 	mlxsw_sp_acl_tcam_region_catchall_del(mlxsw_sp, region);
 	mlxsw_sp_acl_tcam_region_disable(mlxsw_sp, region);
 	mlxsw_sp_acl_tcam_region_free(mlxsw_sp, region);
-	mlxsw_sp_acl_tcam_region_id_put(region->group->tcam, region->id);
+	mlxsw_sp_acl_tcam_region_id_put(tcam, region->id);
 	mlxsw_afk_key_info_put(region->key_info);
 	parman_destroy(region->parman);
 	kfree(region);
