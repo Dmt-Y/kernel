@@ -70,6 +70,11 @@ struct mlxsw_afk *mlxsw_sp_acl_afk(struct mlxsw_sp_acl *acl)
 	return acl->afk;
 }
 
+struct mlxsw_sp_acl_tcam *mlxsw_sp_acl_to_tcam(struct mlxsw_sp_acl *acl)
+{
+	return (struct mlxsw_sp_acl_tcam *)acl->priv;
+}
+
 struct mlxsw_sp_acl_ruleset_ht_key {
 	struct net_device *dev; /* dev this ruleset is bound to */
 	bool ingress;
