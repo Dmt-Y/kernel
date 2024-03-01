@@ -612,7 +612,6 @@ static int coda_try_fmt_vid_cap(struct file *file, void *priv,
 
 	/* The h.264 decoder only returns complete 16x16 macroblocks */
 	if (codec && codec->src_fourcc == V4L2_PIX_FMT_H264) {
-		f->fmt.pix.width = f->fmt.pix.width;
 		f->fmt.pix.height = round_up(f->fmt.pix.height, 16);
 		f->fmt.pix.bytesperline = round_up(f->fmt.pix.width, 16);
 		f->fmt.pix.sizeimage = f->fmt.pix.bytesperline *
@@ -758,9 +757,7 @@ static int coda_s_fmt_vid_out(struct file *file, void *priv,
 			      struct v4l2_format *f)
 {
 	struct coda_ctx *ctx = fh_to_ctx(priv);
-	struct coda_q_data *q_data_src;
 	struct v4l2_format f_cap;
-	struct v4l2_rect r;
 	int ret;
 
 	ret = coda_try_fmt_vid_out(file, priv, f);
@@ -779,17 +776,7 @@ static int coda_s_fmt_vid_out(struct file *file, void *priv,
 	f_cap.fmt.pix.width = f->fmt.pix.width;
 	f_cap.fmt.pix.height = f->fmt.pix.height;
 
-	ret = coda_try_fmt_vid_cap(file, priv, &f_cap);
-	if (ret)
-		return ret;
-
-	q_data_src = get_q_data(ctx, V4L2_BUF_TYPE_VIDEO_OUTPUT);
-	r.left = 0;
-	r.top = 0;
-	r.width = q_data_src->width;
-	r.height = q_data_src->height;
-
-	return coda_s_fmt(ctx, &f_cap, &r);
+	return coda_s_fmt_vid_cap(file, priv, &f_cap);
 }
 
 static int coda_reqbufs(struct file *file, void *priv,
@@ -920,7 +907,7 @@ static int coda_encoder_cmd(struct file *file, void *fh,
 	flush_work(&ctx->pic_run_work);
 
 	/* If there is no buffer in flight, wake up */
-	if (ctx->qsequence == ctx->osequence) {
+	if (!ctx->streamon_out || ctx->qsequence == ctx->osequence) {
 		dst_vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx,
 					 V4L2_BUF_TYPE_VIDEO_CAPTURE);
 		dst_vq->last_buffer_dequeued = true;
@@ -1810,6 +1797,12 @@ static int coda_queue_init(struct coda_ctx *ctx, struct vb2_queue *vq)
 	 * that videobuf2 will keep the value of bytesused intact.
 	 */
 	vq->allow_zero_bytesused = 1;
+	/*
+	 * We might be fine with no buffers on some of the queues, but that
+	 * would need to be reflected in job_ready(). Currently we expect all
+	 * queues to have at least one buffer queued.
+	 */
+	vq->min_buffers_needed = 1;
 	vq->dev = &ctx->dev->plat_dev->dev;
 
 	return vb2_queue_init(vq);
@@ -2071,8 +2064,7 @@ static int coda_hw_init(struct coda_dev *dev)
 	if (ret)
 		goto err_clk_ahb;
 
-	if (dev->rstc)
-		reset_control_reset(dev->rstc);
+	reset_control_reset(dev->rstc);
 
 	/*
 	 * Copy the first CODA_ISRAM_SIZE in the internal SRAM.
@@ -2370,11 +2362,11 @@ static const struct coda_devtype coda_devdata[] = {
 		.num_vdevs    = ARRAY_SIZE(coda9_video_devices),
 		.workbuf_size = 80 * 1024,
 		.tempbuf_size = 204 * 1024,
-		.iram_size    = 0x20000,
+		.iram_size    = 0x1f000, /* leave 4k for suspend code */
 	},
 };
 
-static struct platform_device_id coda_platform_ids[] = {
+static const struct platform_device_id coda_platform_ids[] = {
 	{ .name = "coda-imx27", .driver_data = CODA_IMX27 },
 	{ /* sentinel */ }
 };
@@ -2454,16 +2446,12 @@ static int coda_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	dev->rstc = devm_reset_control_get_optional(&pdev->dev, NULL);
+	dev->rstc = devm_reset_control_get_optional_exclusive(&pdev->dev,
+							      NULL);
 	if (IS_ERR(dev->rstc)) {
 		ret = PTR_ERR(dev->rstc);
-		if (ret == -ENOENT || ret == -ENOTSUPP) {
-			dev->rstc = NULL;
-		} else {
-			dev_err(&pdev->dev, "failed get reset control: %d\n",
-				ret);
-			return ret;
-		}
+		dev_err(&pdev->dev, "failed get reset control: %d\n", ret);
+		return ret;
 	}
 
 	/* Get IRAM pool from device tree or platform data */
