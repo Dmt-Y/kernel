@@ -78,7 +78,7 @@ static int nft_limit_init(struct nft_limit *limit,
 	 * accumulated. tokens_max specifies the bucket size.
 	 * tokens_max = unit * (rate + burst) / rate.
 	 */
-	limit->tokens = div_u64(limit->nsecs * (limit->rate + limit->burst),
+	limit->tokens = div64_u64(limit->nsecs * (limit->rate + limit->burst),
 				limit->rate);
 	limit->tokens_max = limit->tokens;
 
