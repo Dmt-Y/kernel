@@ -55,7 +55,7 @@ struct mlxsw_sp_acl_block {
 
 struct mlxsw_sp_acl_tcam *mlxsw_sp_acl_to_tcam(struct mlxsw_sp_acl *acl)
 {
-	return (struct mlxsw_sp_acl_tcam *)acl->priv;
+	return (struct mlxsw_sp_acl_tcam *)&acl->tcam;
 }
 
 struct mlxsw_sp_acl_ruleset_ht_key {
