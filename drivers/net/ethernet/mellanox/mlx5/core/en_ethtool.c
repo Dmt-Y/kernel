@@ -907,6 +907,14 @@ static int mlx5e_set_link_ksettings(struct net_device *netdev,
 		goto out;
 	}
 
+	if ((link_modes & MLX5E_PROT_MASK(MLX5E_56GBASE_R4)) &&
+	    link_ksettings->base.autoneg != AUTONEG_ENABLE) {
+		netdev_err(priv->netdev, "%s: 56G link speed requires autoneg enabled\n",
+			   __func__);
+		err = -EINVAL;
+		goto out;
+	}
+
 	link_modes = link_modes & eth_proto_cap;
 	if (!link_modes) {
 		netdev_err(netdev, "%s: Not supported link mode(s) requested",

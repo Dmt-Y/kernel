@@ -53,6 +53,11 @@ struct mlxsw_sp_acl_block {
 	unsigned int disable_count;
 };
 
+struct mlxsw_sp_acl_tcam *mlxsw_sp_acl_to_tcam(struct mlxsw_sp_acl *acl)
+{
+	return (struct mlxsw_sp_acl_tcam *)&acl->tcam;
+}
+
 struct mlxsw_sp_acl_ruleset_ht_key {
 	struct mlxsw_sp_acl_block *block;
 	u32 chain_index;
