@@ -7,6 +7,10 @@
 struct sfp;
 
 struct sfp_socket_ops {
+#ifndef __GENKSYMS__
+	void (*attach)(struct sfp *sfp);
+	void (*detach)(struct sfp *sfp);
+#endif
 	void (*start)(struct sfp *sfp);
 	void (*stop)(struct sfp *sfp);
 	int (*module_info)(struct sfp *sfp, struct ethtool_modinfo *modinfo);

@@ -1166,8 +1166,36 @@ static long zcrypt_msgtype6_send_cprb(struct zcrypt_queue *zq,
 				    struct ica_xcRB *xcRB,
 				    struct ap_message *ap_msg)
 {
-	int rc;
 	struct response_type *rtype = (struct response_type *)(ap_msg->private);
+	struct {
+		struct type6_hdr hdr;
+		struct CPRBX cprbx;
+		/* ... more data blocks ... */
+	} __packed * msg = ap_msg->message;
+	unsigned int max_payload_size;
+	int rc, delta;
+
+	/* calculate maximum payload for this card and msg type */
+	max_payload_size = zq->reply.bufsize - sizeof(struct type86_fmt2_msg);
+
+	/* limit each of the two from fields to the maximum payload size */
+	msg->hdr.FromCardLen1 = min(msg->hdr.FromCardLen1, max_payload_size);
+	msg->hdr.FromCardLen2 = min(msg->hdr.FromCardLen2, max_payload_size);
+
+	/* calculate delta if the sum of both exceeds max payload size */
+	delta = msg->hdr.FromCardLen1 + msg->hdr.FromCardLen2
+		- max_payload_size;
+	if (delta > 0) {
+		/*
+		 * Sum exceeds maximum payload size, prune FromCardLen1
+		 * (always trust FromCardLen2)
+		 */
+		if (delta > msg->hdr.FromCardLen1) {
+			rc = -EINVAL;
+			return rc;
+		}
+		msg->hdr.FromCardLen1 -= delta;
+	}
 
 	init_completion(&rtype->work);
 	ap_queue_message(zq->queue, ap_msg);
@@ -1241,7 +1269,6 @@ static long zcrypt_msgtype6_send_ep11_cprb(struct zcrypt_queue *zq,
 		unsigned int	dom_val;	/* domain id	   */
 	} __packed * payload_hdr = NULL;
 
-
 	/**
 	 * The target domain field within the cprb body/payload block will be
 	 * replaced by the usage domain for non-management commands only.
@@ -1272,6 +1299,13 @@ static long zcrypt_msgtype6_send_ep11_cprb(struct zcrypt_queue *zq,
 		payload_hdr->dom_val = (unsigned int)
 					AP_QID_QUEUE(zq->queue->qid);
 	}
+
+	/*
+	 * Set the queue's reply buffer length minus the two prepend headers
+	 * as reply limit for the card firmware.
+	 */
+	msg->hdr.FromCardLen1 = zq->reply.bufsize -
+		sizeof(struct type86_hdr) - sizeof(struct type86_fmt2_ext);
 
 	init_completion(&rtype->work);
 	ap_queue_message(zq->queue, ap_msg);

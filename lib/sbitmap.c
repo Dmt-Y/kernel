@@ -439,21 +439,36 @@ EXPORT_SYMBOL_GPL(sbitmap_queue_min_shallow_depth);
 static struct sbq_wait_state *sbq_wake_ptr(struct sbitmap_queue *sbq)
 {
 	int i, wake_index;
+	struct sbq_wait_state *active_ws = NULL;
 
 	wake_index = atomic_read(&sbq->wake_index);
 	for (i = 0; i < SBQ_WAIT_QUEUES; i++) {
 		struct sbq_wait_state *ws = &sbq->ws[wake_index];
 
 		if (waitqueue_active(&ws->wait)) {
-			int o = atomic_read(&sbq->wake_index);
+			if (atomic_read(&ws->wait_cnt) > 0) {
+				int o = atomic_read(&sbq->wake_index);
 
-			if (wake_index != o)
-				atomic_cmpxchg(&sbq->wake_index, o, wake_index);
-			return ws;
+				if (wake_index != o)
+					atomic_cmpxchg(&sbq->wake_index, o,
+							wake_index);
+				return ws;
+			}
+			active_ws = ws;
 		}
 
 		wake_index = sbq_index_inc(wake_index);
 	}
+
+	/*
+	 * There are active waitqueues but all are in the process of being
+	 * woken. Perform wakeup on some waitqueue to avoid loosing the wakeup.
+	 * This is actually important in case task performing wakeup gets
+	 * preempted and lots of other wakeup events happen before it gets
+	 * scheduled again.
+	 */
+	if (active_ws)
+		wake_up_nr(&active_ws->wait, READ_ONCE(sbq->wake_batch));
 
 	return NULL;
 }
@@ -463,6 +478,7 @@ static bool __sbq_wake_up(struct sbitmap_queue *sbq)
 	struct sbq_wait_state *ws;
 	unsigned int wake_batch;
 	int wait_cnt;
+	bool ret;
 
 	ws = sbq_wake_ptr(sbq);
 	if (!ws)
@@ -473,12 +489,23 @@ static bool __sbq_wake_up(struct sbitmap_queue *sbq)
 	 * For concurrent callers of this, callers should call this function
 	 * again to wakeup a new batch on a different 'ws'.
 	 */
-	if (wait_cnt < 0 || !waitqueue_active(&ws->wait))
+	if (wait_cnt < 0)
 		return true;
 
+	/*
+	 * If we decremented queue without waiters, retry to avoid lost
+	 * wakeups.
+	 */
 	if (wait_cnt > 0)
-		return false;
+		return !waitqueue_active(&ws->wait);
 
+	/*
+	 * When wait_cnt == 0, we have to be particularly careful as we are
+	 * responsible to reset wait_cnt regardless whether we've actually
+	 * woken up anybody. But in case we didn't wakeup anybody, we still
+	 * need to retry.
+	 */
+	ret = !waitqueue_active(&ws->wait);
 	wake_batch = READ_ONCE(sbq->wake_batch);
 
 	/*
@@ -507,7 +534,7 @@ static bool __sbq_wake_up(struct sbitmap_queue *sbq)
 	sbq_index_atomic_inc(&sbq->wake_index);
 	atomic_set(&ws->wait_cnt, wake_batch);
 
-	return false;
+	return ret;
 }
 
 void sbitmap_queue_wake_up(struct sbitmap_queue *sbq)

@@ -820,16 +820,16 @@ static void nfs_inode_remove_request(struct nfs_page *req)
 			ClearPagePrivate(head->wb_page);
 			clear_bit(PG_MAPPED, &head->wb_flags);
 		}
-		nfsi->nrequests--;
-		spin_unlock(&inode->i_lock);
 	} else {
 		spin_lock(&inode->i_lock);
-		nfsi->nrequests--;
-		spin_unlock(&inode->i_lock);
 	}
 
-	if (test_and_clear_bit(PG_INODE_REF, &req->wb_flags))
+	if (test_and_clear_bit(PG_INODE_REF, &req->wb_flags)) {
+		nfsi->nrequests--;
+		spin_unlock(&inode->i_lock);
 		nfs_release_request(req);
+	} else
+		spin_unlock(&inode->i_lock);
 }
 
 static void
@@ -1433,20 +1433,27 @@ static void nfs_redirty_request(struct nfs_page *req)
 	nfs_release_request(req);
 }
 
-static void nfs_async_write_error(struct list_head *head)
+static void nfs_async_write_error(struct list_head *head, int error)
 {
 	struct nfs_page	*req;
 
 	while (!list_empty(head)) {
 		req = nfs_list_entry(head->next);
 		nfs_list_remove_request(req);
+		if (nfs_error_is_fatal(error)) {
+			nfs_context_set_write_error(req->wb_context, error);
+			if (nfs_error_is_fatal_on_server(error)) {
+				nfs_write_error_remove_page(req);
+				continue;
+			}
+		}
 		nfs_redirty_request(req);
 	}
 }
 
 static void nfs_async_write_reschedule_io(struct nfs_pgio_header *hdr)
 {
-	nfs_async_write_error(&hdr->pages);
+	nfs_async_write_error(&hdr->pages, 0);
 }
 
 static const struct nfs_pgio_completion_ops nfs_async_write_completion_ops = {

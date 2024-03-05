@@ -29,6 +29,12 @@ static struct {
 } iforce_hat_to_axis[16] = {{ 0,-1}, { 1,-1}, { 1, 0}, { 1, 1}, { 0, 1}, {-1, 1}, {-1, 0}, {-1,-1}};
 
 
+void iforce_dump_packet_suse(struct iforce *iforce, char *msg, u16 cmd, unsigned char *data)
+{
+	dev_dbg(iforce->dev->dev.parent, "%s %s cmd = %04x, data = %*ph\n",
+		__func__, msg, cmd, LO(cmd), data);
+}
+
 void iforce_dump_packet(char *msg, u16 cmd, unsigned char *data)
 {
 	int i;
@@ -37,7 +43,7 @@ void iforce_dump_packet(char *msg, u16 cmd, unsigned char *data)
 	for (i = 0; i < LO(cmd); i++)
 		printk("%02x ", data[i]);
 	printk("\n");
-}
+}	
 
 /*
  * Send a packet of bytes to the device
@@ -167,7 +173,7 @@ void iforce_process_packet(struct iforce *iforce, u16 cmd, unsigned char *data)
 		memcpy(iforce->edata, data, IFORCE_MAX_LENGTH);
 	}
 #endif
-	wake_up(&iforce->wait);
+	wake_up_all(&iforce->wait);
 
 	if (!iforce->type) {
 		being_used--;

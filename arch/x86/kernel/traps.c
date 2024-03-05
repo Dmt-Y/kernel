@@ -318,7 +318,7 @@ dotraplinkage void do_##name(struct pt_regs *regs, long error_code)	\
 	do_error_trap(regs, error_code, str, trapnr, signr);		\
 }
 
-DO_ERROR(X86_TRAP_DE,     SIGFPE,  "divide error",		divide_error)
+DO_ERROR(X86_TRAP_DE,     SIGFPE,  "divide error",              divide_error)
 DO_ERROR(X86_TRAP_OF,     SIGSEGV, "overflow",			overflow)
 DO_ERROR(X86_TRAP_UD,     SIGILL,  "invalid opcode",		invalid_op)
 DO_ERROR(X86_TRAP_OLD_MF, SIGFPE,  "coprocessor segment overrun",coprocessor_segment_overrun)

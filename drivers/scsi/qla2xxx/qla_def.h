@@ -23,7 +23,6 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 #include <linux/firmware.h>
-#include <linux/aer.h>
 #include <linux/mutex.h>
 #include <linux/btree.h>
 
@@ -385,6 +384,13 @@ struct els_reject {
 struct req_que;
 struct qla_tgt_sess;
 
+struct qla_buf_dsc {
+	u16 tag;
+#define TAG_FREED 0xffff
+	void *buf;
+	dma_addr_t buf_dma;
+};
+
 /*
  * SCSI Request Block
  */
@@ -393,14 +399,16 @@ struct srb_cmd {
 	uint32_t request_sense_length;
 	uint32_t fw_sense_length;
 	uint8_t *request_sense_ptr;
-	struct ct6_dsd *ct6_ctx;
 	struct crc_context *crc_ctx;
+	struct ct6_dsd ct6_ctx;
+	struct qla_buf_dsc buf_dsc;
 };
 
 /*
  * SRB flag definitions
  */
 #define SRB_DMA_VALID			BIT_0	/* Command sent to ISP */
+#define SRB_GOT_BUF			BIT_1
 #define SRB_FCP_CMND_DMA_VALID		BIT_12	/* DIF: DSD List valid */
 #define SRB_CRC_CTX_DMA_VALID		BIT_2	/* DIF: context DMA valid */
 #define SRB_CRC_PROT_DMA_VALID		BIT_4	/* DIF: prot DMA valid */
@@ -457,6 +465,16 @@ static inline be_id_t port_id_to_be_id(port_id_t port_id)
 
 	return res;
 }
+
+struct tmf_arg {
+	struct list_head tmf_elem;
+	struct qla_qpair *qpair;
+	struct fc_port *fcport;
+	struct scsi_qla_host *vha;
+	u64 lun;
+	u32 flags;
+	uint8_t modifier;
+};
 
 struct els_logo_payload {
 	uint8_t opcode;
@@ -537,6 +555,10 @@ struct srb_iocb {
 			uint32_t data;
 			struct completion comp;
 			__le16 comp_status;
+
+			uint8_t modifier;
+			uint8_t vp_index;
+			uint16_t loop_id;
 		} tmf;
 		struct {
 #define SRB_FXDISC_REQ_DMA_VALID	BIT_0
@@ -640,6 +662,7 @@ struct srb_iocb {
 #define SRB_SA_UPDATE	25
 #define SRB_ELS_CMD_HST_NOLOGIN 26
 #define SRB_SA_REPLACE	27
+#define SRB_MARKER	28
 
 struct qla_els_pt_arg {
 	u8 els_opcode;
@@ -661,7 +684,7 @@ enum {
 
 struct iocb_resource {
 	u8 res_type;
-	u8 pad;
+	u8  exch_cnt;
 	u16 iocb_cnt;
 };
 
@@ -682,7 +705,6 @@ typedef struct srb {
 	struct iocb_resource iores;
 	struct kref cmd_kref;	/* need to migrate ref_count over to this */
 	void *priv;
-	wait_queue_head_t nvme_ls_waitq;
 	struct fc_port *fcport;
 	struct scsi_qla_host *vha;
 	unsigned int start_timer:1;
@@ -2486,7 +2508,6 @@ struct ct_sns_desc {
 
 enum discovery_state {
 	DSC_DELETED,
-	DSC_GNN_ID,
 	DSC_GNL,
 	DSC_LOGIN_PEND,
 	DSC_LOGIN_FAILED,
@@ -2542,7 +2563,6 @@ typedef struct fc_port {
 	unsigned int do_prli_nvme:1;
 
 	uint8_t nvme_flag;
-
 	uint8_t node_name[WWN_SIZE];
 	uint8_t port_name[WWN_SIZE];
 	port_id_t d_id;
@@ -2597,7 +2617,7 @@ typedef struct fc_port {
 
 	int login_retry;
 
-	struct fc_rport *rport, *drport;
+	struct fc_rport *rport;
 	u32 supported_classes;
 
 	uint8_t fc4_type;
@@ -2700,7 +2720,6 @@ extern const char *const port_state_str[5];
 
 static const char *const port_dstate_str[] = {
 	[DSC_DELETED]		= "DELETED",
-	[DSC_GNN_ID]		= "GNN_ID",
 	[DSC_GNL]		= "GNL",
 	[DSC_LOGIN_PEND]	= "LOGIN_PEND",
 	[DSC_LOGIN_FAILED]	= "LOGIN_FAILED",
@@ -3463,6 +3482,7 @@ struct qla_msix_entry {
 	int have_irq;
 	int in_use;
 	uint32_t vector;
+	uint32_t vector_base0;
 	uint16_t entry;
 	char name[30];
 	void *handle;
@@ -3480,7 +3500,6 @@ enum qla_work_type {
 	QLA_EVT_ASYNC_ADISC,
 	QLA_EVT_UEVENT,
 	QLA_EVT_AENFX,
-	QLA_EVT_GPNID,
 	QLA_EVT_UNMAP,
 	QLA_EVT_NEW_SESS,
 	QLA_EVT_GPDB,
@@ -3494,7 +3513,6 @@ enum qla_work_type {
 	QLA_EVT_GPNFT,
 	QLA_EVT_GPNFT_DONE,
 	QLA_EVT_GNNFT_DONE,
-	QLA_EVT_GNNID,
 	QLA_EVT_GFPNID,
 	QLA_EVT_SP_RETRY,
 	QLA_EVT_IIDMA,
@@ -3537,15 +3555,12 @@ struct qla_work_evt {
 		} iosb;
 		struct {
 			port_id_t id;
-		} gpnid;
-		struct {
-			port_id_t id;
 			u8 port_name[8];
 			u8 node_name[8];
 			void *pla;
 			u8 fc4_type;
 		} new_sess;
-		struct { /*Get PDB, Get Speed, update fcport, gnl, gidpn */
+		struct { /*Get PDB, Get Speed, update fcport, gnl */
 			fc_port_t *fcport;
 			u8 opt;
 		} fcport;
@@ -3722,9 +3737,36 @@ struct qla_fw_resources {
 	u16 iocbs_limit;
 	u16 iocbs_qp_limit;
 	u16 iocbs_used;
+	u16 exch_total;
+	u16 exch_limit;
+	u16 exch_used;
+	u16 pad;
+};
+
+struct qla_fw_res {
+	u16      iocb_total;
+	u16      iocb_limit;
+	atomic_t iocb_used;
+
+	u16      exch_total;
+	u16      exch_limit;
+	atomic_t exch_used;
 };
 
 #define QLA_IOCB_PCT_LIMIT 95
+
+struct  qla_buf_pool {
+	u16 num_bufs;
+	u16 num_active;
+	u16 max_used;
+	u16 num_alloc;
+	u16 prev_max;
+	u16 pad;
+	uint32_t take_snapshot:1;
+	unsigned long *buf_map;
+	void **buf_array;
+	dma_addr_t *dma_array;
+};
 
 /*Queue pair data structure */
 struct qla_qpair {
@@ -3756,6 +3798,12 @@ struct qla_qpair {
 
 	uint16_t id;			/* qp number used with FW */
 	uint16_t vp_idx;		/* vport ID */
+
+	uint16_t dsd_inuse;
+	uint16_t dsd_avail;
+	struct list_head dsd_list;
+#define NUM_DSD_CHAIN 4096
+
 	mempool_t *srb_mempool;
 
 	struct pci_dev  *pdev;
@@ -3778,7 +3826,9 @@ struct qla_qpair {
 	uint64_t retry_term_jiff;
 	struct qla_tgt_counters tgt_counters;
 	uint16_t cpuid;
+	bool cpu_mapped;
 	struct qla_fw_resources fwres ____cacheline_aligned;
+	struct  qla_buf_pool buf_pool;
 	u32	cmd_cnt;
 	u32	cmd_completion_cnt;
 	u32	prev_completion_cnt;
@@ -3939,7 +3989,6 @@ struct qlt_hw_data {
 	__le32 __iomem *atio_q_out;
 
 	const struct qla_tgt_func_tmpl *tgt_ops;
-	struct qla_tgt_vp_map *tgt_vp_map;
 
 	int saved_set;
 	__le16	saved_exchange_count;
@@ -4107,6 +4156,7 @@ struct qla_hw_data {
 	struct req_que **req_q_map;
 	struct rsp_que **rsp_q_map;
 	struct qla_qpair **queue_pair_map;
+	struct qla_qpair **qp_cpu_map;
 	unsigned long req_qid_map[(QLA_MAX_QUEUES / 8) / sizeof(unsigned long)];
 	unsigned long rsp_qid_map[(QLA_MAX_QUEUES / 8) / sizeof(unsigned long)];
 	unsigned long qpair_qid_map[(QLA_MAX_QUEUES / 8)
@@ -4351,7 +4401,6 @@ struct qla_hw_data {
 	uint8_t		aen_mbx_count;
 	atomic_t	num_pend_mbx_stage1;
 	atomic_t	num_pend_mbx_stage2;
-	atomic_t	num_pend_mbx_stage3;
 	uint16_t	frame_payload_size;
 
 	uint32_t	login_retry_count;
@@ -4426,7 +4475,6 @@ struct qla_hw_data {
 
 	/* n2n */
 	struct fc_els_flogi plogi_els_payld;
-#define LOGIN_TEMPLATE_SIZE (sizeof(struct fc_els_flogi) - 4)
 
 	void            *swl;
 
@@ -4621,6 +4669,8 @@ struct qla_hw_data {
 		uint32_t	flt_region_aux_img_status_sec;
 	};
 	uint8_t         active_image;
+	uint8_t active_tmf;
+#define MAX_ACTIVE_TMF 8
 
 	/* Needed for BEACON */
 	uint16_t        beacon_blink_led;
@@ -4635,6 +4685,8 @@ struct qla_hw_data {
 
 	struct qla_msix_entry *msix_entries;
 
+	struct list_head tmf_pending;
+	struct list_head tmf_active;
 	struct list_head        vp_list;        /* list of VP */
 	unsigned long   vp_idx_map[(MAX_MULTI_ID_FABRIC / 8) /
 			sizeof(unsigned long)];
@@ -4677,11 +4729,6 @@ struct qla_hw_data {
 	int		link_width;
 	struct fw_blob	*hablob;
 	struct qla82xx_legacy_intr_set nx_legacy_intr;
-
-	uint16_t	gbl_dsd_inuse;
-	uint16_t	gbl_dsd_avail;
-	struct list_head gbl_dsd_list;
-#define NUM_DSD_CHAIN 4096
 
 	uint8_t fw_type;
 	uint32_t file_prd_off;	/* File firmware product offset */
@@ -4763,6 +4810,8 @@ struct qla_hw_data {
 	spinlock_t sadb_lock;	/* protects list */
 	struct els_reject elsrej;
 	u8 edif_post_stop_cnt_down;
+	struct qla_vp_map *vp_map;
+	struct qla_fw_res fwres ____cacheline_aligned;
 };
 
 #define RX_ELS_SIZE (roundup(sizeof(struct enode) + ELS_MAX_PAYLOAD, SMP_CACHE_BYTES))
@@ -4858,6 +4907,7 @@ typedef struct scsi_qla_host {
 #define LOOP_READY	5
 #define LOOP_DEAD	6
 
+	unsigned long   buf_expired;
 	unsigned long   relogin_jif;
 	unsigned long   dpc_flags;
 #define RESET_MARKER_NEEDED	0	/* Send marker to ISP. */
@@ -4873,7 +4923,6 @@ typedef struct scsi_qla_host {
 #define ISP_ABORT_RETRY		10	/* ISP aborted. */
 #define BEACON_BLINK_NEEDED	11
 #define REGISTER_FDMI_NEEDED	12
-#define FCPORT_UPDATE_NEEDED	13
 #define VP_DPC_NEEDED		14	/* wake up for VP dpc handling */
 #define UNLOADING		15
 #define NPIV_CONFIG_NEEDED	16
@@ -5023,7 +5072,6 @@ typedef struct scsi_qla_host {
 	uint8_t n2n_port_name[WWN_SIZE];
 	uint16_t	n2n_id;
 	__le16 dport_data[4];
-	struct list_head gpnid_list;
 	struct fab_scan scan;
 	uint8_t	scm_fabric_connection_flags;
 
@@ -5065,7 +5113,7 @@ struct qla27xx_image_status {
 #define SET_AL_PA	2
 #define RESET_VP_IDX	3
 #define RESET_AL_PA	4
-struct qla_tgt_vp_map {
+struct qla_vp_map {
 	uint8_t	idx;
 	scsi_qla_host_t *vha;
 };
@@ -5478,5 +5526,9 @@ struct ql_vnd_tgt_stats_resp {
 	__func__, _fp->port_name, ##_args, atomic_read(&_fp->state), \
 	_fp->disc_state, _fp->scan_state, _fp->loop_id, _fp->deleted, \
 	_fp->flags
+
+#define TMF_NOT_READY(_fcport) \
+	(!_fcport || IS_SESSION_DELETED(_fcport) || atomic_read(&_fcport->state) != FCS_ONLINE || \
+	!_fcport->vha->hw->flags.fw_started)
 
 #endif

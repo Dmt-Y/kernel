@@ -85,6 +85,7 @@ extern void release_mid(struct mid_q_entry *mid);
 extern void cifs_wake_up_task(struct mid_q_entry *mid);
 extern int cifs_handle_standard(struct TCP_Server_Info *server,
 				struct mid_q_entry *mid);
+extern char *cifs_sanitize_prepath(char *prepath, gfp_t gfp);
 extern bool cifs_match_ipaddr(struct sockaddr *srcaddr, struct sockaddr *rhs);
 extern int cifs_discard_remaining_data(struct TCP_Server_Info *server);
 extern int cifs_call_async(struct TCP_Server_Info *server,
@@ -120,7 +121,7 @@ extern int SendReceive2(const unsigned int /* xid */ , struct cifs_ses *,
 			struct kvec * /* resp vec */);
 extern int SendReceiveBlockingLock(const unsigned int xid,
 			struct cifs_tcon *ptcon,
-			struct smb_hdr *in_buf ,
+			struct smb_hdr *in_buf,
 			struct smb_hdr *out_buf,
 			int *bytes_returned);
 extern int cifs_reconnect(struct TCP_Server_Info *server);
@@ -226,6 +227,8 @@ extern int cifs_read_page_from_socket(struct TCP_Server_Info *server,
 					unsigned int to_read);
 extern int cifs_setup_cifs_sb(struct smb_vol *pvolume_info,
 			       struct cifs_sb_info *cifs_sb);
+int cifs_mount_get_session(struct cifs_mount_ctx *mnt_ctx);
+int cifs_mount_get_tcon(struct cifs_mount_ctx *mnt_ctx);
 extern int cifs_match_super(struct super_block *, void *);
 extern void cifs_cleanup_volume_info(struct smb_vol *pvolume_info);
 extern struct smb_vol *cifs_get_volume_info(char *mount_data,
@@ -508,14 +511,6 @@ extern int CIFSSMBGetCIFSACL(const unsigned int xid, struct cifs_tcon *tcon,
 			__u16 fid, struct cifs_ntsd **acl_inf, __u32 *buflen);
 extern int CIFSSMBSetCIFSACL(const unsigned int, struct cifs_tcon *, __u16,
 			struct cifs_ntsd *, __u32, int);
-extern int CIFSSMBGetPosixACL(const unsigned int xid, struct cifs_tcon *tcon,
-		const unsigned char *searchName,
-		char *acl_inf, const int buflen, const int acl_type,
-		const struct nls_table *nls_codepage, int remap_special_chars);
-extern int CIFSSMBSetPosixACL(const unsigned int xid, struct cifs_tcon *tcon,
-		const unsigned char *fileName,
-		const char *local_acl, const int buflen, const int acl_type,
-		const struct nls_table *nls_codepage, int remap_special_chars);
 extern int CIFSGetExtAttr(const unsigned int xid, struct cifs_tcon *tcon,
 			const int netfid, __u64 *pExtAttrBits, __u64 *pMask);
 extern void cifs_autodisable_serverino(struct cifs_sb_info *cifs_sb);
@@ -574,12 +569,11 @@ void cifs_aio_ctx_release(struct kref *refcount);
 int setup_aio_ctx_iter(struct cifs_aio_ctx *ctx, struct iov_iter *iter, int rw);
 void smb2_cached_lease_break(struct work_struct *work);
 
-int cifs_alloc_hash(const char *name, struct crypto_shash **shash,
-		    struct sdesc **sdesc);
-void cifs_free_hash(struct crypto_shash **shash, struct sdesc **sdesc);
+int cifs_alloc_hash(const char *name, struct shash_desc **sdesc);
+void cifs_free_hash(struct shash_desc **sdesc);
 
-extern void rqst_page_get_length(struct smb_rqst *rqst, unsigned int page,
-				unsigned int *len, unsigned int *offset);
+void rqst_page_get_length(const struct smb_rqst *rqst, unsigned int page,
+			unsigned int *len, unsigned int *offset);
 
 void extract_unc_hostname(const char *unc, const char **h, size_t *len);
 int copy_path_name(char *dst, const char *src);
@@ -618,5 +612,6 @@ static inline int cifs_create_options(struct cifs_sb_info *cifs_sb, int options)
 
 struct super_block *cifs_get_tcon_super(struct cifs_tcon *tcon);
 void cifs_put_tcon_super(struct super_block *sb);
+int cifs_wait_for_server_reconnect(struct TCP_Server_Info *server, bool retry);
 
 #endif			/* _CIFSPROTO_H */

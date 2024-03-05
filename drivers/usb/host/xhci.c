@@ -21,6 +21,9 @@
  */
 
 #include <linux/pci.h>
+#ifndef __GENKSYMS__
+#include <linux/iommu.h>
+#endif
 #include <linux/iopoll.h>
 #include <linux/irq.h>
 #include <linux/log2.h>
@@ -49,6 +52,9 @@ MODULE_PARM_DESC(link_quirk, "Don't clear the chain bit on a link TRB");
 static unsigned long long quirks;
 module_param(quirks, ullong, S_IRUGO);
 MODULE_PARM_DESC(quirks, "Bit flags for quirks to be enabled as default");
+
+unsigned long suse_xhci_grace_period = 0;
+DEFINE_SPINLOCK(suse_grace_lock);
 
 static bool td_on_ring(struct xhci_td *td, struct xhci_ring *ring)
 {
@@ -161,9 +167,13 @@ int xhci_start(struct xhci_hcd *xhci)
 		xhci_err(xhci, "Host took too long to start, "
 				"waited %u microseconds.\n",
 				XHCI_MAX_HALT_USEC);
-	if (!ret)
+	if (!ret) {
+		spin_lock_irq(&suse_grace_lock);
 		/* clear state flags. Including dying, halted or removing */
 		xhci->xhc_state = 0;
+		suse_xhci_grace_period = jiffies + msecs_to_jiffies(500);
+		spin_unlock_irq(&suse_grace_lock);
+	}
 
 	return ret;
 }
@@ -237,6 +247,7 @@ int xhci_reset(struct xhci_hcd *xhci)
 static void xhci_zero_64b_regs(struct xhci_hcd *xhci)
 {
 	struct device *dev = xhci_to_hcd(xhci)->self.sysdev;
+	struct iommu_domain *domain;
 	int err, i;
 	u64 val;
 
@@ -254,7 +265,9 @@ static void xhci_zero_64b_regs(struct xhci_hcd *xhci)
 	 * an iommu. Doing anything when there is no iommu is definitely
 	 * unsafe...
 	 */
-	if (!(xhci->quirks & XHCI_ZERO_64B_REGS) || !dev->iommu_group)
+	domain = iommu_get_domain_for_dev(dev);
+	if (!(xhci->quirks & XHCI_ZERO_64B_REGS) || !dev->iommu_group ||
+			domain->type == IOMMU_DOMAIN_IDENTITY)
 		return;
 
 	xhci_info(xhci, "Zeroing 64bit base registers, expecting fault\n");
@@ -1168,7 +1181,8 @@ int xhci_resume(struct xhci_hcd *xhci, bool hibernated)
 	/* re-initialize the HC on Restore Error, or Host Controller Error */
 	if (temp & (STS_SRE | STS_HCE)) {
 		reinit_xhc = true;
-		xhci_warn(xhci, "xHC error in resume, USBSTS 0x%x, Reinit\n", temp);
+		if (!xhci->broken_suspend)
+			xhci_warn(xhci, "xHC error in resume, USBSTS 0x%x, Reinit\n", temp);
 	}
 
 	if (reinit_xhc) {

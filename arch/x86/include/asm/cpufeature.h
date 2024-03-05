@@ -29,7 +29,25 @@ enum cpuid_leafs
 	CPUID_7_ECX,
 	CPUID_8000_0007_EBX,
 	CPUID_7_EDX,
+	CPUID_MAX = CPUID_7_EDX,
+	/*
+	 * Everything below should go into the extended caps array to preserve
+	 * kABI
+	 */
+	CPUID_8000_0021_EAX,
 };
+
+#define CPUID_IDX(x) \
+	__builtin_choose_expr((x) > CPUID_MAX, (x) - CPUID_MAX - 1, (x))
+#define IS_EXT_CPUID_BIT(bit) ((bit>>5) > NCAPINTS)
+
+/*
+ * This macro must be called with bit belonging to one of the extended bug bits,
+ * this required because the first bug word (19) aliases with the first extended
+ * cap word (19) as such the check would be ambiguous if this macro is called
+ * with a bit which represents an extended cpuid.
+ */
+#define IS_EXT_BUG_BIT(bit) ((bit>>5) >= (NCAPINTS + NBUGINTS))
 
 #ifdef CONFIG_X86_FEATURE_NAMES
 extern const char * const x86_cap_flags[NCAPINTS*32];
@@ -45,11 +63,12 @@ extern const char * const x86_power_flags[32];
  * In order to save room, we index into this array by doing
  * X86_BUG_<name> - NCAPINTS*32.
  */
-extern const char * const x86_bug_flags[NBUGINTS*32];
+extern const char * const x86_bug_flags[(NBUGINTS+NEXTBUGINTS)*32];
 
-#define test_cpu_cap(c, bit)						\
-	 test_bit(bit, (unsigned long *)((c)->x86_capability))
-
+#define test_cpu_cap(c, bit) \
+	(IS_EXT_CPUID_BIT((bit)) ? test_bit((bit) - (NCAPINTS*32), \
+				(unsigned long *)((c)->x86_ext_capability)) : \
+				test_bit(bit, (unsigned long *)((c)->x86_capability)))
 /*
  * There are 32 bits/features in each mask word.  The high bits
  * (selected with (bit>>5) give us the word number and the low 5
@@ -133,11 +152,33 @@ extern void setup_clear_cpu_cap(unsigned int bit);
 extern void clear_cpu_cap(struct cpuinfo_x86 *c, unsigned int bit);
 
 #define setup_force_cpu_cap(bit) do { \
-	set_cpu_cap(&boot_cpu_data, bit);	\
-	set_bit(bit, (unsigned long *)cpu_caps_set);	\
+	if (IS_EXT_CPUID_BIT(bit)) {					      \
+		set_bit(bit - (NCAPINTS*32),						      \
+			(unsigned long *)&cpu_caps_set[NCAPINTS + NBUGINTS]); \
+		set_bit(bit - (NCAPINTS*32),                                 \
+			(unsigned long *)(&boot_cpu_data)->x86_ext_capability); \
+	} else {							      \
+		set_cpu_cap(&boot_cpu_data, bit);			      \
+		set_bit(bit, (unsigned long *)cpu_caps_set);		      \
+	}								      \
 } while (0)
 
-#define setup_force_cpu_bug(bit) setup_force_cpu_cap(bit)
+
+/*
+ * This has to be re-implemented because of the aliasing issues between
+ * extended capability bits and bug bits, see comment above IS_EXT_BUG_BIT.
+ */
+#define setup_force_cpu_bug(bit) do { \
+	if (IS_EXT_BUG_BIT(bit)) {					      \
+		set_bit(bit - ((NCAPINTS+NBUGINTS)*32),		      \
+			(unsigned long *)&cpu_caps_set[NCAPINTS + NBUGINTS + NEXTCAPINTS]); \
+		set_bit(bit - ((NCAPINTS+NBUGINTS)*32),                                 \
+			(unsigned long *)&(&boot_cpu_data)->x86_ext_capability[NEXTCAPINTS]); \
+	} else {							      \
+		set_cpu_cap(&boot_cpu_data, bit);			      \
+		set_bit(bit, (unsigned long *)cpu_caps_set);		      \
+	}								      \
+} while (0)
 
 #if defined(CC_HAVE_ASM_GOTO) && defined(CONFIG_X86_FAST_FEATURE_TESTS)
 /*
@@ -202,7 +243,10 @@ static __always_inline __pure bool _static_cpu_has(u16 bit)
 #define static_cpu_has(bit)		boot_cpu_has(bit)
 #endif
 
-#define cpu_has_bug(c, bit)		cpu_has(c, (bit))
+#define cpu_has_bug(c, bit) (IS_EXT_BUG_BIT((bit)) ? test_bit((bit) - ((NCAPINTS+NBUGINTS)*32), \
+				(unsigned long *)(&((c)->x86_ext_capability[NEXTCAPINTS]))) : \
+				cpu_has(c, (bit)))
+
 #define set_cpu_bug(c, bit)		set_cpu_cap(c, (bit))
 #define clear_cpu_bug(c, bit)		clear_cpu_cap(c, (bit))
 
@@ -210,7 +254,7 @@ static __always_inline __pure bool _static_cpu_has(u16 bit)
 #define boot_cpu_has_bug(bit)		cpu_has_bug(&boot_cpu_data, (bit))
 #define boot_cpu_set_bug(bit)		set_cpu_cap(&boot_cpu_data, (bit))
 
-#define MAX_CPU_FEATURES		(NCAPINTS * 32)
+#define MAX_CPU_FEATURES		((NCAPINTS + NEXTCAPINTS) * 32)
 #define cpu_have_feature		boot_cpu_has
 
 #define CPU_FEATURE_TYPEFMT		"x86,ven%04Xfam%04Xmod%04X"

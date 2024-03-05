@@ -99,6 +99,7 @@ SECTIONS
 		*(.discard.*)
 		*(.interp .dynamic)
 		*(.dynsym .dynstr .hash .gnu.hash)
+		*(.note.GNU-stack)
 		*(.eh_frame)
 	}
 
@@ -152,9 +153,6 @@ SECTIONS
 		__alt_instructions = .;
 		*(.altinstructions)
 		__alt_instructions_end = .;
-	}
-	.altinstr_replacement : {
-		*(.altinstr_replacement)
 	}
 
 	. = ALIGN(PAGE_SIZE);

@@ -1017,7 +1017,7 @@
 			earlyprintk=serial[,0x...[,baudrate]]
 			earlyprintk=ttySn[,baudrate]
 			earlyprintk=dbgp[debugController#]
-			earlyprintk=pciserial,bus:device.function[,baudrate]
+			earlyprintk=pciserial[,force],bus:device.function[,baudrate]
 			earlyprintk=xdbc[xhciController#]
 
 			earlyprintk is useful when the kernel crashes before
@@ -1048,6 +1048,10 @@
 			The xen output can only be used by Xen PV guests.
 
 			The sclp output can only be used on s390.
+
+			The optional "force" to "pciserial" enables use of a
+			PCI device even when its classcode is not of the
+			UART class.
 
 	edac_report=	[HW,EDAC] Control how to report EDAC event
 			Format: {"on" | "off" | "force"}
@@ -1233,6 +1237,20 @@
 	gart_fix_e820=  [X86_64] disable the fix e820 for K8 GART
 			Format: off | on
 			default: on
+
+	gather_data_sampling=
+			[X86,INTEL] Control the Gather Data Sampling (GDS)
+			mitigation.
+
+			Gather Data Sampling is a hardware vulnerability which
+			allows unprivileged speculative access to data which was
+			previously stored in vector registers.
+
+			This issue is mitigated by default in updated microcode.
+			The mitigation may have a performance impact but can be
+			disabled.
+
+			off:	Disable GDS mitigation.
 
 	gcov_persist=	[GCOV] When non-zero (default), profiling data for
 			kernel modules is saved and remains accessible via
@@ -2475,6 +2493,7 @@
 				improves system performance, but it may also
 				expose users to several CPU vulnerabilities.
 				Equivalent to: nopti [X86,PPC]
+					       gather_data_sampling=off [X86]
 					       kpti=0 [ARM64]
 					       nospectre_v1 [X86,PPC]
 					       nobp=0 [S390]
@@ -2852,10 +2871,10 @@
 
 	nohugeiomap	[KNL,x86] Disable kernel huge I/O mappings.
 
-	nosmt		[KNL,S390] Disable symmetric multithreading (SMT).
+	nosmt		[KNL,PPC,S390] Disable symmetric multithreading (SMT).
 			Equivalent to smt=1.
 
-			[KNL,x86] Disable symmetric multithreading (SMT).
+			[KNL,x86,PPC] Disable symmetric multithreading (SMT).
 			nosmt=force: Force disable SMT, similar to disabling
 				     it in the BIOS except that some of the
 				     resource partitioning effects which are
@@ -2959,7 +2978,7 @@
 			[X86,PV_OPS] Disable paravirtualized VMware scheduler
 			clock and use the default one.
 
-	no-steal-acc    [X86,KVM] Disable paravirtualized steal time accounting.
+	no-steal-acc    [X86,PV_OPS,KVM] Disable paravirtualized steal time accounting.
 			steal time is computed, but won't influence scheduler
 			behaviour
 
@@ -3998,20 +4017,33 @@
 			Speculative Code Execution with Return Instructions)
 			vulnerability.
 
+			AMD-based UNRET and IBPB mitigations alone do not stop
+			sibling threads from influencing the predictions of other
+			sibling threads. For that reason, STIBP is used on pro-
+			cessors that support it, and mitigate SMT on processors
+			that don't.
+
 			off          - no mitigation
 			auto         - automatically select a migitation
 			auto,nosmt   - automatically select a mitigation,
 				       disabling SMT if necessary for
 				       the full mitigation (only on Zen1
 				       and older without STIBP).
-			ibpb	     - mitigate short speculation windows on
-				       basic block boundaries too. Safe, highest
-				       perf impact.
-			unret        - force enable untrained return thunks,
-				       only effective on AMD f15h-f17h
-				       based systems.
-			unret,nosmt  - like unret, will disable SMT when STIBP
-			               is not available.
+			ibpb         - On AMD, mitigate short speculation
+				       windows on basic block boundaries too.
+				       Safe, highest perf impact. It also
+				       enables STIBP if present. Not suitable
+				       on Intel.
+			ibpb,nosmt   - Like "ibpb" above but will disable SMT
+				       when STIBP is not available. This is
+				       the alternative for systems which do not
+				       have STIBP.
+			unret        - Force enable untrained return thunks,
+				       only effective on AMD f15h-f17h based
+				       systems.
+			unret,nosmt  - Like unret, but will disable SMT when STIBP
+				       is not available. This is the alternative for
+				       systems which do not have STIBP.
 
 			Selecting 'auto' will choose a mitigation method at run
 			time according to the CPU.
@@ -4309,6 +4341,17 @@
 
 			Not specifying this option is equivalent to
 			spectre_v2_user=auto.
+
+	spec_rstack_overflow=
+			[X86] Control RAS overflow mitigation on AMD Zen CPUs
+
+			off		- Disable mitigation
+			microcode	- Enable microcode mitigation only
+			safe-ret	- Enable sw-only safe RET mitigation (default)
+			ibpb		- Enable mitigation by issuing IBPB on
+					  kernel entry
+			ibpb-vmexit	- Issue IBPB only on VMEXIT
+					  (cloud-specific mitigation)
 
 	spec_store_bypass_disable=
 			[HW] Control Speculative Store Bypass (SSB) Disable mitigation

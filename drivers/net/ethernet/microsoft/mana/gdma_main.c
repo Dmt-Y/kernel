@@ -101,6 +101,25 @@ static int mana_gd_query_max_resources(struct pci_dev *pdev)
 	return 0;
 }
 
+static int mana_gd_query_hwc_timeout(struct pci_dev *pdev, u32 *timeout_val)
+{
+	struct gdma_context *gc = pci_get_drvdata(pdev);
+	struct gdma_query_hwc_timeout_resp resp = {};
+	struct gdma_query_hwc_timeout_req req = {};
+	int err;
+
+	mana_gd_init_req_hdr(&req.hdr, GDMA_QUERY_HWC_TIMEOUT,
+			     sizeof(req), sizeof(resp));
+	req.timeout_ms = *timeout_val;
+	err = mana_gd_send_request(gc, sizeof(req), &req, sizeof(resp), &resp);
+	if (err || resp.hdr.status)
+		return err ? err : -EPROTO;
+
+	*timeout_val = resp.timeout_ms;
+
+	return 0;
+}
+
 static int mana_gd_detect_devices(struct pci_dev *pdev)
 {
 	struct gdma_context *gc = pci_get_drvdata(pdev);
@@ -867,8 +886,10 @@ int mana_gd_verify_vf_version(struct pci_dev *pdev)
 	struct gdma_context *gc = pci_get_drvdata(pdev);
 	struct gdma_verify_ver_resp resp = {};
 	struct gdma_verify_ver_req req = {};
+	struct hw_channel_context *hwc;
 	int err;
 
+	hwc = gc->hwc.driver_data;
 	mana_gd_init_req_hdr(&req.hdr, GDMA_VERIFY_VF_DRIVER_VERSION,
 			     sizeof(req), sizeof(resp));
 
@@ -886,7 +907,14 @@ int mana_gd_verify_vf_version(struct pci_dev *pdev)
 			err, resp.hdr.status);
 		return err ? err : -EPROTO;
 	}
-
+	if (resp.pf_cap_flags1 & GDMA_DRV_CAP_FLAG_1_HWC_TIMEOUT_RECONFIG) {
+		err = mana_gd_query_hwc_timeout(pdev, &hwc->hwc_timeout);
+		if (err) {
+			dev_err(gc->dev, "Failed to set the hwc timeout %d\n", err);
+			return err;
+		}
+		dev_dbg(gc->dev, "set the hwc timeout to %u\n", hwc->hwc_timeout);
+	}
 	return 0;
 }
 
@@ -1222,13 +1250,20 @@ static int mana_gd_setup_irqs(struct pci_dev *pdev)
 		gic->handler = NULL;
 		gic->arg = NULL;
 
+		if (!i)
+			snprintf(gic->name, MANA_IRQ_NAME_SZ, "mana_hwc@pci:%s",
+				 pci_name(pdev));
+		else
+			snprintf(gic->name, MANA_IRQ_NAME_SZ, "mana_q%d@pci:%s",
+				 i - 1, pci_name(pdev));
+
 		irq = pci_irq_vector(pdev, i);
 		if (irq < 0) {
 			err = irq;
 			goto free_irq;
 		}
 
-		err = request_irq(irq, mana_gd_intr, 0, "mana_intr", gic);
+		err = request_irq(irq, mana_gd_intr, 0, gic->name, gic);
 		if (err)
 			goto free_irq;
 	}

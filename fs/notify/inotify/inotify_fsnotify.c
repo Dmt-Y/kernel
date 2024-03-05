@@ -75,7 +75,7 @@ int inotify_handle_event(struct fsnotify_group *group,
 	struct inotify_event_info *event;
 	struct fsnotify_event *fsn_event;
 	int ret;
-	int len = 0;
+	int len = 0, wd;
 	int alloc_len = sizeof(struct inotify_event_info);
 
 	BUG_ON(vfsmount_mark);
@@ -97,6 +97,13 @@ int inotify_handle_event(struct fsnotify_group *group,
 
 	i_mark = container_of(inode_mark, struct inotify_inode_mark,
 			      fsn_mark);
+	/*
+	 * We can be racing with mark being detached. Don't report event with
+	 * invalid wd.
+	 */
+	wd = READ_ONCE(i_mark->wd);
+	if (wd == -1)
+		return 0;
 
 	event = kmalloc(alloc_len, GFP_KERNEL);
 	if (unlikely(!event))
@@ -104,7 +111,7 @@ int inotify_handle_event(struct fsnotify_group *group,
 
 	fsn_event = &event->fse;
 	fsnotify_init_event(fsn_event, inode, mask);
-	event->wd = i_mark->wd;
+	event->wd = wd;
 	event->sync_cookie = cookie;
 	event->name_len = len;
 	if (len)

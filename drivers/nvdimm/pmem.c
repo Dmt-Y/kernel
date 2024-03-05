@@ -35,7 +35,6 @@
 #include "pmem.h"
 #include "pfn.h"
 #include "nd.h"
-#include "nd-core.h"
 
 static struct device *to_dev(struct pmem_device *pmem)
 {
@@ -112,13 +111,13 @@ static void write_pmem(void *pmem_addr, struct page *page,
 
 	while (len) {
 		mem = kmap_atomic(page);
-		chunk = min_t(unsigned int, len, PAGE_SIZE);
+		chunk = min_t(unsigned int, len, PAGE_SIZE - off);
 		memcpy_flushcache(pmem_addr, mem + off, chunk);
 		kunmap_atomic(mem);
 		len -= chunk;
 		off = 0;
 		page++;
-		pmem_addr += PAGE_SIZE;
+		pmem_addr += chunk;
 	}
 }
 
@@ -131,7 +130,7 @@ static blk_status_t read_pmem(struct page *page, unsigned int off,
 
 	while (len) {
 		mem = kmap_atomic(page);
-		chunk = min_t(unsigned int, len, PAGE_SIZE);
+		chunk = min_t(unsigned int, len, PAGE_SIZE - off);
 		rem = memcpy_mcsafe(mem + off, pmem_addr, chunk);
 		kunmap_atomic(mem);
 		if (rem)
@@ -139,7 +138,7 @@ static blk_status_t read_pmem(struct page *page, unsigned int off,
 		len -= chunk;
 		off = 0;
 		page++;
-		pmem_addr += PAGE_SIZE;
+		pmem_addr += chunk;
 	}
 	return BLK_STS_OK;
 }
@@ -153,8 +152,14 @@ static blk_status_t pmem_do_bvec(struct pmem_device *pmem, struct page *page,
 	phys_addr_t pmem_off = sector * 512 + pmem->data_offset;
 	void *pmem_addr = pmem->virt_addr + pmem_off;
 
-	if (unlikely(is_bad_pmem(&pmem->bb, sector, len)))
+	if (unlikely(is_bad_pmem(&pmem->bb, sector, len))) {
 		bad_pmem = true;
+		if (is_write) {
+			rc = pmem_clear_poison(pmem, pmem_off, len);
+			if (rc != BLK_STS_OK)
+				return rc;
+		}
+	}
 
 	if (!is_write) {
 		if (unlikely(bad_pmem))
@@ -164,26 +169,8 @@ static blk_status_t pmem_do_bvec(struct pmem_device *pmem, struct page *page,
 			flush_dcache_page(page);
 		}
 	} else {
-		/*
-		 * Note that we write the data both before and after
-		 * clearing poison.  The write before clear poison
-		 * handles situations where the latest written data is
-		 * preserved and the clear poison operation simply marks
-		 * the address range as valid without changing the data.
-		 * In this case application software can assume that an
-		 * interrupted write will either return the new good
-		 * data or an error.
-		 *
-		 * However, if pmem_clear_poison() leaves the data in an
-		 * indeterminate state we need to perform the write
-		 * after clear poison.
-		 */
 		flush_dcache_page(page);
 		write_pmem(pmem_addr, page, off, len);
-		if (unlikely(bad_pmem)) {
-			rc = pmem_clear_poison(pmem, pmem_off, len);
-			write_pmem(pmem_addr, page, off, len);
-		}
 	}
 
 	return rc;

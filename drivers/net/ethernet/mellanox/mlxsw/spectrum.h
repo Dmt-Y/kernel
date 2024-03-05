@@ -526,6 +526,7 @@ int mlxsw_sp_kvdl_alloc_count_query(struct mlxsw_sp *mlxsw_sp,
 				    enum mlxsw_sp_kvdl_entry_type type,
 				    unsigned int entry_count,
 				    unsigned int *p_alloc_count);
+struct mlxsw_sp_acl_tcam *mlxsw_sp_acl_to_tcam(struct mlxsw_sp_acl *acl);
 
 /* spectrum1_kvdl.c */
 extern const struct mlxsw_sp_kvdl_ops mlxsw_sp1_kvdl_ops;

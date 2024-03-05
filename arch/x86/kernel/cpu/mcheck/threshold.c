@@ -5,6 +5,7 @@
 #include <linux/kernel.h>
 
 #include <asm/irq_vectors.h>
+#include <asm/traps.h>
 #include <asm/apic.h>
 #include <asm/mce.h>
 #include <asm/trace/irq_vectors.h>
@@ -23,7 +24,7 @@ static inline void __smp_threshold_interrupt(void)
 	mce_threshold_vector();
 }
 
-asmlinkage __visible void __irq_entry smp_threshold_interrupt(void)
+asmlinkage __visible void __irq_entry smp_threshold_interrupt(struct pt_regs *regs)
 {
 	entering_irq();
 	__smp_threshold_interrupt();

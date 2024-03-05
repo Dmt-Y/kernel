@@ -23,6 +23,7 @@
 #include <linux/parser.h>
 #include <linux/mpage.h>
 #include <linux/user_namespace.h>
+#include <linux/blkdev.h>
 
 #include "isofs.h"
 #include "zisofs.h"
@@ -605,6 +606,12 @@ static int isofs_fill_super(struct super_block *s, void *data, int silent)
 	/*
 	 * What if bugger tells us to go beyond page size?
 	 */
+	if (bdev_logical_block_size(s->s_bdev) > 2048) {
+		printk(KERN_WARNING
+		       "ISOFS: unsupported/invalid hardware sector size %d\n",
+			bdev_logical_block_size(s->s_bdev));
+		goto out_freesbi;
+	}
 	opt.blocksize = sb_min_blocksize(s, opt.blocksize);
 
 	sbi->s_high_sierra = 0; /* default is iso9660 */

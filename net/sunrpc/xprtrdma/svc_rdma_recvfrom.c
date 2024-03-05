@@ -704,6 +704,12 @@ int svc_rdma_recvfrom(struct svc_rqst *rqstp)
 	__be32 *p;
 	int ret;
 
+	/* Prevent svc_xprt_release() from releasing pages in rq_pages
+	 * when returning 0 or an error.
+	 */
+	rqstp->rq_respages = rqstp->rq_pages;
+	rqstp->rq_next_page = rqstp->rq_respages;
+
 	spin_lock(&rdma_xprt->sc_rq_dto_lock);
 	ctxt = svc_rdma_next_recv_ctxt(&rdma_xprt->sc_read_complete_q);
 	if (ctxt) {
@@ -725,12 +731,6 @@ int svc_rdma_recvfrom(struct svc_rqst *rqstp)
 	atomic_inc(&rdma_stat_recv);
 
 	svc_rdma_build_arg_xdr(rqstp, ctxt);
-
-	/* Prevent svc_xprt_release from releasing pages in rq_pages
-	 * if we return 0 or an error.
-	 */
-	rqstp->rq_respages = rqstp->rq_pages;
-	rqstp->rq_next_page = rqstp->rq_respages;
 
 	p = (__be32 *)rqstp->rq_arg.head[0].iov_base;
 	ret = svc_rdma_xdr_decode_req(&rqstp->rq_arg);

@@ -1405,7 +1405,7 @@ static int vmw_cmd_dx_define_query(struct vmw_private *dev_priv,
 	struct vmw_resource *cotable_res;
 
 
-	if (ctx_node == NULL) {
+	if (!ctx_node || !ctx_node->res) {
 		DRM_ERROR("DX Context not set for query.\n");
 		return -EINVAL;
 	}
@@ -2454,6 +2454,7 @@ static int vmw_cmd_dx_set_shader_res(struct vmw_private *dev_priv,
 
 	if ((u64) cmd->body.startView + (u64) num_sr_view >
 	    (u64) SVGA3D_DX_MAX_SRVIEWS ||
+	    cmd->body.type < SVGA3D_SHADERTYPE_MIN ||
 	    cmd->body.type >= SVGA3D_SHADERTYPE_DX10_MAX) {
 		DRM_ERROR("Invalid shader binding.\n");
 		return -EINVAL;

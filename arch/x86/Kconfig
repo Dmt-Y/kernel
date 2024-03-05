@@ -433,6 +433,13 @@ config RETPOLINE
 	  branches. Requires a compiler with -mindirect-branch=thunk-extern
 	  support for full protection. The kernel may run slower.
 
+config CPU_SRSO
+	bool "Mitigate speculative RAS overflow on AMD"
+	depends on CPU_SUP_AMD && X86_64 && RETPOLINE
+	default y
+	help
+	  Enable the SRSO mitigation needed on AMD Zen1-4 machines.
+
 config SLS
 	bool "Mitigate Straight-Line-Speculation"
 	depends on X86_64

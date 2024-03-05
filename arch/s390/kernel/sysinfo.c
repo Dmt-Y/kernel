@@ -58,6 +58,8 @@ int stsi(void *sysinfo, int fc, int sel1, int sel2)
 }
 EXPORT_SYMBOL(stsi);
 
+#ifdef CONFIG_PROC_FS
+
 static bool convert_ext_name(unsigned char encoding, char *name, size_t len)
 {
 	switch (encoding) {
@@ -309,6 +311,8 @@ static int __init sysinfo_create_proc(void)
 	return 0;
 }
 device_initcall(sysinfo_create_proc);
+
+#endif /* CONFIG_PROC_FS */
 
 /*
  * Service levels interface.

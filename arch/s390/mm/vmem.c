@@ -11,6 +11,7 @@
 #include <linux/hugetlb.h>
 #include <linux/slab.h>
 #include <linux/memblock.h>
+#include <asm/page-states.h>
 #include <asm/cacheflush.h>
 #include <asm/pgalloc.h>
 #include <asm/pgtable.h>
@@ -33,8 +34,12 @@ static void __ref *vmem_alloc_pages(unsigned int order)
 {
 	unsigned long size = PAGE_SIZE << order;
 
-	if (slab_is_available())
-		return (void *)__get_free_pages(GFP_KERNEL, order);
+	if (slab_is_available()) {
+		void *table = (void *)__get_free_pages(GFP_KERNEL, order);
+
+		arch_set_page_dat(virt_to_page(table), order);
+		return table;
+	}
 	return (void *) memblock_alloc(size, size);
 }
 

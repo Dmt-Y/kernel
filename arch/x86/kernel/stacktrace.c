@@ -206,12 +206,9 @@ static inline void __save_stack_trace_user(struct stack_trace *trace)
 			break;
 		if ((unsigned long)fp < regs->sp)
 			break;
-		if (frame.ret_addr) {
-			trace->entries[trace->nr_entries++] =
-				frame.ret_addr;
-		}
-		if (fp == frame.next_fp)
+		if (!frame.ret_addr)
 			break;
+		trace->entries[trace->nr_entries++] = frame.ret_addr;
 		fp = frame.next_fp;
 	}
 }

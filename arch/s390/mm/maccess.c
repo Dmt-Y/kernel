@@ -60,11 +60,15 @@ void notrace s390_kernel_write(void *dst, const void *src, size_t size)
 	long copied;
 
 	spin_lock_irqsave(&s390_kernel_write_lock, flags);
-	while (size) {
-		copied = s390_kernel_write_odd(dst, src, size);
-		dst += copied;
-		src += copied;
-		size -= copied;
+	if (!(flags & PSW_MASK_DAT)) {
+		memcpy(dst, src, size);
+	} else {
+		while (size) {
+			copied = s390_kernel_write_odd(dst, src, size);
+			dst += copied;
+			src += copied;
+			size -= copied;
+		}
 	}
 	spin_unlock_irqrestore(&s390_kernel_write_lock, flags);
 }

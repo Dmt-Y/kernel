@@ -254,10 +254,11 @@ bool icmp_global_allow(void)
 	bool rc = false;
 
 	/* Check if token bucket is empty and cannot be refilled
-	 * without taking the spinlock.
+	 * without taking the spinlock. The READ_ONCE() are paired
+	 * with the following WRITE_ONCE() in this same function.
 	 */
-	if (!icmp_global.credit) {
-		delta = min_t(u32, now - icmp_global.stamp, HZ);
+	if (!READ_ONCE(icmp_global.credit)) {
+		delta = min_t(u32, now - READ_ONCE(icmp_global.stamp), HZ);
 		if (delta < HZ / 50)
 			return false;
 	}
@@ -267,7 +268,7 @@ bool icmp_global_allow(void)
 	if (delta >= HZ / 50) {
 		incr = sysctl_icmp_msgs_per_sec * delta / HZ ;
 		if (incr)
-			icmp_global.stamp = now;
+			WRITE_ONCE(icmp_global.stamp, now);
 	}
 	credit = min_t(u32, icmp_global.credit + incr, sysctl_icmp_msgs_burst);
 	if (credit) {
@@ -277,7 +278,7 @@ bool icmp_global_allow(void)
 		credit = max_t(int, credit - prandom_u32_max(3), 0);
 		rc = true;
 	}
-	icmp_global.credit = credit;
+	WRITE_ONCE(icmp_global.credit, credit);
 	spin_unlock(&icmp_global.lock);
 	return rc;
 }
@@ -786,7 +787,7 @@ static bool icmp_tag_validation(int proto)
 }
 
 /*
- *	Handle ICMP_DEST_UNREACH, ICMP_TIME_EXCEED, ICMP_QUENCH, and
+ *	Handle ICMP_DEST_UNREACH, ICMP_TIME_EXCEEDED, ICMP_QUENCH, and
  *	ICMP_PARAMETERPROB.
  */
 
@@ -814,7 +815,8 @@ static bool icmp_unreach(struct sk_buff *skb)
 	if (iph->ihl < 5) /* Mangled header, drop. */
 		goto out_err;
 
-	if (icmph->type == ICMP_DEST_UNREACH) {
+	switch (icmph->type) {
+	case ICMP_DEST_UNREACH:
 		switch (icmph->code & 15) {
 		case ICMP_NET_UNREACH:
 		case ICMP_HOST_UNREACH:
@@ -850,8 +852,16 @@ static bool icmp_unreach(struct sk_buff *skb)
 		}
 		if (icmph->code > NR_ICMP_UNREACH)
 			goto out;
-	} else if (icmph->type == ICMP_PARAMETERPROB)
+		break;
+	case ICMP_PARAMETERPROB:
 		info = ntohl(icmph->un.gateway) >> 24;
+		break;
+	case ICMP_TIME_EXCEEDED:
+		__ICMP_INC_STATS(net, ICMP_MIB_INTIMEEXCDS);
+		if (icmph->code == ICMP_EXC_FRAGTIME)
+			goto out;
+		break;
+	}
 
 	/*
 	 *	Throw it at our lower layers

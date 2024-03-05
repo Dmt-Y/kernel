@@ -53,6 +53,7 @@
 #include <asm/spec-ctrl.h>
 #include <asm/cpu_device_id.h>
 #include <asm/nospec-branch.h>
+#include <asm/processor.h>
 
 #include <asm/virtext.h>
 #include "trace.h"
@@ -2278,7 +2279,9 @@ static void svm_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 
 	if (sd->current_vmcb != svm->vmcb) {
 		sd->current_vmcb = svm->vmcb;
-		indirect_branch_prediction_barrier();
+
+		if (!cpu_feature_enabled(X86_FEATURE_IBPB_ON_VMEXIT))
+			indirect_branch_prediction_barrier();
 	}
 	avic_vcpu_load(vcpu, cpu);
 }
@@ -3429,6 +3432,14 @@ static int nested_svm_vmexit(struct vcpu_svm *svm)
 	kvm_mmu_reset_context(&svm->vcpu);
 	kvm_mmu_load(&svm->vcpu);
 
+	/*
+	 * Drop what we picked up for L2 via svm_complete_interrupts() so it
+	 * doesn't end up in L1.
+	 */
+	svm->vcpu.arch.nmi_injected = false;
+	kvm_clear_exception_queue(&svm->vcpu);
+	kvm_clear_interrupt_queue(&svm->vcpu);
+
 	return 0;
 }
 
@@ -4314,13 +4325,13 @@ static int svm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr)
 		    !guest_has_pred_cmd_msr(vcpu))
 			return 1;
 
-		if (data & ~PRED_CMD_IBPB)
+		if (data & ~(PRED_CMD_IBPB | (boot_cpu_has(X86_FEATURE_SBPB) ? PRED_CMD_SBPB : 0)))
 			return 1;
 
 		if (!data)
 			break;
 
-		wrmsrl(MSR_IA32_PRED_CMD, PRED_CMD_IBPB);
+		wrmsrl(MSR_IA32_PRED_CMD, data);
 		if (is_guest_mode(vcpu))
 			break;
 		set_msr_interception(svm->msrpm, MSR_IA32_PRED_CMD, 0, 1);
@@ -5649,6 +5660,8 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 	 */
 	x86_spec_ctrl_set_guest(svm->spec_ctrl, svm->virt_spec_ctrl);
 
+	amd_clear_divider();
+
 	local_irq_enable();
 
 	asm volatile (
@@ -5695,8 +5708,7 @@ static void svm_vcpu_run(struct kvm_vcpu *vcpu)
 		"mov %%r14, %c[r14](%[svm]) \n\t"
 		"mov %%r15, %c[r15](%[svm]) \n\t"
 #endif
-
-		ALTERNATIVE("", "call zen_untrain_ret", X86_FEATURE_UNRET)
+		UNTRAIN_RET_VM
 
 		/*
 		* Clear host registers marked as clobbered to prevent
@@ -5884,6 +5896,13 @@ static bool svm_cpu_has_accelerated_tpr(void)
 
 static bool svm_has_emulated_msr(int index)
 {
+	switch (index) {
+	case MSR_IA32_MCG_EXT_CTL:
+		return false;
+	default:
+		break;
+	}
+
 	return true;
 }
 

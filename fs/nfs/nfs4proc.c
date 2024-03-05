@@ -1805,8 +1805,7 @@ _nfs4_opendata_reclaim_to_nfs4_state(struct nfs4_opendata *data)
 	if (!data->rpc_done) {
 		if (data->rpc_status)
 			return ERR_PTR(data->rpc_status);
-		/* cached opens have already been processed */
-		goto update;
+		return nfs4_try_open_cached(data);
 	}
 
 	ret = nfs_refresh_inode(inode, &data->f_attr);
@@ -1815,7 +1814,7 @@ _nfs4_opendata_reclaim_to_nfs4_state(struct nfs4_opendata *data)
 
 	if (data->o_res.delegation_type != 0)
 		nfs4_opendata_check_deleg(data, state);
-update:
+
 	if (!update_open_stateid(state, &data->o_res.stateid,
 				NULL, data->o_arg.fmode))
 		return ERR_PTR(-EAGAIN);
@@ -3194,6 +3193,7 @@ static bool nfs4_refresh_open_old_stateid(nfs4_stateid *dst,
 	u32 dst_seqid;
 	bool ret;
 	int seq, status = -EAGAIN;
+	unsigned long deadline = jiffies + 5 * HZ;
 	struct wait_queue_head *wq_head = bit_waitqueue(&state->flags,
 							NFS_STATE_CHANGE_WAIT);
 	DEFINE_WAIT(wait);
@@ -3228,10 +3228,12 @@ static bool nfs4_refresh_open_old_stateid(nfs4_stateid *dst,
 		write_sequnlock(&state->seqlock);
 		trace_nfs4_close_stateid_update_wait(state->inode, dst, 0);
 
+		status = -EAGAIN;
 		if (fatal_signal_pending(current))
 			status = -EINTR;
 		else
-			if (schedule_timeout(5*HZ) != 0)
+			if (schedule_timeout(5*HZ) != 0 &&
+			    !time_after(jiffies, deadline))
 				status = 0;
 
 		finish_wait(wq_head, &wait);

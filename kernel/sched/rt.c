@@ -829,6 +829,19 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 		int enqueue = 0;
 		struct rt_rq *rt_rq = sched_rt_period_rt_rq(rt_b, i);
 		struct rq *rq = rq_of_rt_rq(rt_rq);
+		int skip;
+
+		/*
+		 * When span == cpu_online_mask, taking each rq->lock
+		 * can be time-consuming. Try to avoid it when possible.
+		 */
+		raw_spin_lock(&rt_rq->rt_runtime_lock);
+		if (!sched_feat(RT_RUNTIME_SHARE) && rt_rq->rt_runtime != RUNTIME_INF)
+			rt_rq->rt_runtime = rt_b->rt_runtime;
+		skip = !rt_rq->rt_time && !rt_rq->rt_nr_running;
+		raw_spin_unlock(&rt_rq->rt_runtime_lock);
+		if (skip)
+			continue;
 
 		raw_spin_lock(&rq->lock);
 		update_rq_clock(rq);
@@ -1491,6 +1504,10 @@ static struct sched_rt_entity *pick_next_rt_entity(struct rq *rq,
 	BUG_ON(idx >= MAX_RT_PRIO);
 
 	queue = array->queue + idx;
+#ifdef CONFIG_SCHED_DEBUG
+	if (WARN_ON_ONCE(list_empty(queue)))
+		return NULL;
+#endif
 	next = list_entry(queue->next, struct sched_rt_entity, run_list);
 
 	return next;
@@ -1504,7 +1521,8 @@ static struct task_struct *_pick_next_task_rt(struct rq *rq)
 
 	do {
 		rt_se = pick_next_rt_entity(rq, rt_rq);
-		BUG_ON(!rt_se);
+		if (unlikely(!rt_se))
+			return NULL;
 		rt_rq = group_rt_rq(rt_se);
 	} while (rt_rq);
 

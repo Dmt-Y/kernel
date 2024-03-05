@@ -122,7 +122,6 @@ struct md_rdev {
 
 	struct kernfs_node *sysfs_state; /* handle for 'state'
 					   * sysfs entry */
-
 	struct badblocks badblocks;
 
 	struct {
@@ -139,6 +138,11 @@ struct md_rdev {
 	struct list_head serial_list;
 	spinlock_t serial_list_lock;
 	wait_queue_head_t serial_io_wait;
+
+	/* handle for 'unacknowledged_bad_blocks' sysfs dentry */
+	struct kernfs_node *sysfs_unack_badblocks;
+	/* handle for 'bad_blocks' sysfs dentry */
+	struct kernfs_node *sysfs_badblocks;
 #endif
 };
 enum flag_bits {
@@ -506,6 +510,9 @@ struct mddev {
 
 	bool	has_superblocks:1;
 #ifndef __GENKSYMS__
+	struct kernfs_node		*sysfs_completed;	/*handle for 'sync_completed' */
+	struct kernfs_node		*sysfs_degraded;	/*handle for 'degraded' */
+	struct kernfs_node		*sysfs_level;		/*handle for 'level' */
 	mempool_t *serial_info_pool;
 	unsigned int                    noio_flag; /* for memalloc scope API */
 	bool	fail_last_dev:1;

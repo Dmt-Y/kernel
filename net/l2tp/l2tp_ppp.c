@@ -447,16 +447,6 @@ static void pppol2tp_put_sk(struct rcu_head *head)
  */
 static void pppol2tp_session_close(struct l2tp_session *session)
 {
-	struct pppol2tp_session *ps;
-
-	ps = l2tp_session_priv(session);
-	mutex_lock(&ps->sk_lock);
-	ps->__sk = rcu_dereference_protected(ps->sk,
-					     lockdep_is_held(&ps->sk_lock));
-	RCU_INIT_POINTER(ps->sk, NULL);
-	if (ps->__sk)
-		call_rcu(&ps->rcu, pppol2tp_put_sk);
-	mutex_unlock(&ps->sk_lock);
 }
 
 /* Really kill the session socket. (Called from sock_put() if
@@ -499,15 +489,24 @@ static int pppol2tp_release(struct socket *sock)
 	sock_orphan(sk);
 	sock->sk = NULL;
 
-	/* If the socket is associated with a session,
-	 * l2tp_session_delete will call pppol2tp_session_close which
-	 * will drop the session's ref on the socket.
-	 */
 	session = pppol2tp_sock_to_session(sk);
 	if (session) {
+		struct pppol2tp_session *ps;
+
 		l2tp_session_delete(session);
-		/* drop the ref obtained by pppol2tp_sock_to_session */
-		sock_put(sk);
+
+		ps = l2tp_session_priv(session);
+		mutex_lock(&ps->sk_lock);
+		ps->__sk = rcu_dereference_protected(ps->sk,
+						     lockdep_is_held(&ps->sk_lock));
+		RCU_INIT_POINTER(ps->sk, NULL);
+		mutex_unlock(&ps->sk_lock);
+		call_rcu(&ps->rcu, pppol2tp_put_sk);
+
+		/* Rely on the sock_put() call at the end of the function for
+		 * dropping the reference held by pppol2tp_sock_to_session().
+		 * The last reference will be dropped by pppol2tp_put_sk().
+		 */
 	}
 
 	release_sock(sk);
@@ -633,6 +632,8 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 	u32 session_id, peer_session_id;
 	bool drop_refcnt = false;
 	bool drop_tunnel = false;
+	bool new_session = false;
+	bool new_tunnel = false;
 	int ver = 2;
 	int fd;
 
@@ -734,6 +735,16 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 			error = l2tp_tunnel_create(sock_net(sk), fd, ver, tunnel_id, peer_tunnel_id, &tcfg, &tunnel);
 			if (error < 0)
 				goto end;
+
+			l2tp_tunnel_inc_refcount(tunnel);
+			error = l2tp_tunnel_register(tunnel, sock_net(sk),
+						     &tcfg);
+			if (error < 0) {
+				kfree(tunnel);
+				goto end;
+			}
+			drop_tunnel = true;
+			new_tunnel = true;
 		}
 	} else {
 		/* Error if we can't find the tunnel */
@@ -768,7 +779,8 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 		 */
 		mutex_lock(&ps->sk_lock);
 		if (rcu_dereference_protected(ps->sk,
-					      lockdep_is_held(&ps->sk_lock))) {
+					      lockdep_is_held(&ps->sk_lock)) ||
+		    ps->__sk) {
 			mutex_unlock(&ps->sk_lock);
 			error = -EEXIST;
 			goto end;
@@ -784,6 +796,7 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 		/* Default MTU must allow space for UDP/L2TP/PPP headers */
 		cfg.mtu = 1500 - PPPOL2TP_HEADER_OVERHEAD;
 		cfg.mru = cfg.mtu;
+		cfg.pw_type = L2TP_PWTYPE_PPP;
 
 		session = l2tp_session_create(sizeof(struct pppol2tp_session),
 					      tunnel, session_id,
@@ -805,6 +818,7 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 			goto end;
 		}
 		drop_refcnt = true;
+		new_session = true;
 	}
 
 	/* Special case: if source & dest session_id == 0x0000, this
@@ -836,7 +850,6 @@ static int pppol2tp_connect(struct socket *sock, struct sockaddr *uservaddr,
 
 out_no_ppp:
 	/* This is how we get the session context from the socket. */
-	sock_hold(sk);
 	sk->sk_user_data = session;
 	rcu_assign_pointer(ps->sk, sk);
 	mutex_unlock(&ps->sk_lock);
@@ -852,6 +865,12 @@ out_no_ppp:
 		  session->name);
 
 end:
+	if (error) {
+		if (new_session)
+			l2tp_session_delete(session);
+		if (new_tunnel)
+			l2tp_tunnel_delete(tunnel);
+	}
 	if (drop_refcnt)
 		l2tp_session_dec_refcount(session);
 	if (drop_tunnel)
@@ -1622,16 +1641,19 @@ struct pppol2tp_seq_data {
 
 static void pppol2tp_next_tunnel(struct net *net, struct pppol2tp_seq_data *pd)
 {
+	/* Drop reference taken during previous invocation */
+	if (pd->tunnel)
+		l2tp_tunnel_dec_refcount(pd->tunnel);
+
 	for (;;) {
-		pd->tunnel = l2tp_tunnel_find_nth(net, pd->tunnel_idx);
+		pd->tunnel = l2tp_tunnel_get_nth(net, pd->tunnel_idx);
 		pd->tunnel_idx++;
 
-		if (pd->tunnel == NULL)
-			break;
+		/* Only accept L2TPv2 tunnels */
+		if (!pd->tunnel || pd->tunnel->version == 2)
+			return;
 
-		/* Ignore L2TPv3 tunnels */
-		if (pd->tunnel->version < 3)
-			break;
+		l2tp_tunnel_dec_refcount(pd->tunnel);
 	}
 }
 
@@ -1680,7 +1702,17 @@ static void *pppol2tp_seq_next(struct seq_file *m, void *v, loff_t *pos)
 
 static void pppol2tp_seq_stop(struct seq_file *p, void *v)
 {
-	/* nothing to do */
+	struct pppol2tp_seq_data *pd = v;
+
+	if (!pd || pd == SEQ_START_TOKEN)
+		return;
+
+	/* Drop reference taken by last invocation of pppol2tp_next_tunnel() */
+	if (pd->tunnel) {
+		l2tp_tunnel_dec_refcount(pd->tunnel);
+		pd->tunnel = NULL;
+		pd->session = NULL;
+	}
 }
 
 static void pppol2tp_seq_tunnel_show(struct seq_file *m, void *v)

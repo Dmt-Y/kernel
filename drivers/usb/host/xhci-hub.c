@@ -31,6 +31,9 @@
 #define	PORT_RWC_BITS	(PORT_CSC | PORT_PEC | PORT_WRC | PORT_OCC | \
 			 PORT_RC | PORT_PLC | PORT_PE)
 
+extern unsigned long suse_xhci_grace_period;
+extern struct spinlock suse_grace_lock;
+
 /* USB 3 BOS descriptor and a capability descriptors, combined.
  * Fields will be adjusted and added later in xhci_create_usb3_bos_desc()
  */
@@ -1452,6 +1455,19 @@ int xhci_hub_status_data(struct usb_hcd *hcd, char *buf)
 	spin_lock_irqsave(&xhci->lock, flags);
 
 	status = bus_state->resuming_ports;
+
+	/*
+	 * SS devices are only visible to roothub after link training completes.
+	 * Keep polling roothubs for a grace period after xHC start
+	 */
+	spin_lock(&suse_grace_lock);
+	if (suse_xhci_grace_period) {
+		if (time_before(jiffies, suse_xhci_grace_period))
+			status = 1;
+		else
+			suse_xhci_grace_period = 0;
+	}
+	spin_unlock(&suse_grace_lock);
 
 	mask = PORT_CSC | PORT_PEC | PORT_OCC | PORT_PLC | PORT_WRC | PORT_CEC;
 

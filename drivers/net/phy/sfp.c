@@ -111,10 +111,12 @@ struct sfp {
 
 	struct gpio_desc *gpio[GPIO_MAX];
 
+	bool attached;
+	struct mutex st_mutex;			/* Protects state */
 	unsigned int state;
 	struct delayed_work poll;
 	struct delayed_work timeout;
-	struct mutex sm_mutex;
+	struct mutex sm_mutex;			/* Protects state machine */
 	unsigned char sm_mod_state;
 	unsigned char sm_dev_state;
 	unsigned short sm_state;
@@ -499,7 +501,7 @@ static void sfp_sm_event(struct sfp *sfp, unsigned int event)
 	 */
 	switch (sfp->sm_mod_state) {
 	default:
-		if (event == SFP_E_INSERT) {
+		if (event == SFP_E_INSERT && sfp->attached) {
 			sfp_module_tx_disable(sfp);
 			sfp_sm_ins_next(sfp, SFP_MOD_PROBE, T_PROBE_INIT);
 		}
@@ -627,6 +629,19 @@ static void sfp_sm_event(struct sfp *sfp, unsigned int event)
 	mutex_unlock(&sfp->sm_mutex);
 }
 
+static void sfp_attach(struct sfp *sfp)
+{
+	sfp->attached = true;
+	if (sfp->state & SFP_F_PRESENT)
+		sfp_sm_event(sfp, SFP_E_INSERT);
+}
+
+static void sfp_detach(struct sfp *sfp)
+{
+	sfp->attached = false;
+	sfp_sm_event(sfp, SFP_E_REMOVE);
+}
+
 static void sfp_start(struct sfp *sfp)
 {
 	sfp_sm_event(sfp, SFP_E_DEV_UP);
@@ -686,6 +701,8 @@ static int sfp_module_eeprom(struct sfp *sfp, struct ethtool_eeprom *ee,
 }
 
 static const struct sfp_socket_ops sfp_module_ops = {
+	.attach = sfp_attach,
+	.detach = sfp_detach,
 	.start = sfp_start,
 	.stop = sfp_stop,
 	.module_info = sfp_module_info,
@@ -705,6 +722,7 @@ static void sfp_check_state(struct sfp *sfp)
 {
 	unsigned int state, i, changed;
 
+	mutex_lock(&sfp->st_mutex);
 	state = sfp_get_state(sfp);
 	changed = state ^ sfp->state;
 	changed &= SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT;
@@ -730,6 +748,7 @@ static void sfp_check_state(struct sfp *sfp)
 		sfp_sm_event(sfp, state & SFP_F_LOS ?
 				SFP_E_LOS_HIGH : SFP_E_LOS_LOW);
 	rtnl_unlock();
+	mutex_unlock(&sfp->st_mutex);
 }
 
 static irqreturn_t sfp_irq(int irq, void *data)
@@ -760,6 +779,7 @@ static struct sfp *sfp_alloc(struct device *dev)
 	sfp->dev = dev;
 
 	mutex_init(&sfp->sm_mutex);
+	mutex_init(&sfp->st_mutex);
 	INIT_DELAYED_WORK(&sfp->poll, sfp_poll);
 	INIT_DELAYED_WORK(&sfp->timeout, sfp_timeout);
 
@@ -828,10 +848,6 @@ static int sfp_probe(struct platform_device *pdev)
 		sfp->set_state = sfp_gpio_set_state;
 	}
 
-	sfp->sfp_bus = sfp_register_socket(sfp->dev, sfp, &sfp_module_ops);
-	if (!sfp->sfp_bus)
-		return -ENOMEM;
-
 	/* Get the initial state, and always signal TX disable,
 	 * since the network interface will not be up.
 	 */
@@ -842,10 +858,6 @@ static int sfp_probe(struct platform_device *pdev)
 		sfp->state |= SFP_F_RATE_SELECT;
 	sfp_set_state(sfp, sfp->state);
 	sfp_module_tx_disable(sfp);
-	rtnl_lock();
-	if (sfp->state & SFP_F_PRESENT)
-		sfp_sm_event(sfp, SFP_E_INSERT);
-	rtnl_unlock();
 
 	for (i = 0; i < GPIO_MAX; i++) {
 		if (gpio_flags[i] != GPIOD_IN || !sfp->gpio[i])
@@ -868,6 +880,19 @@ static int sfp_probe(struct platform_device *pdev)
 
 	if (poll)
 		mod_delayed_work(system_wq, &sfp->poll, poll_jiffies);
+
+	/* We could have an issue in cases no Tx disable pin is available or
+	 * wired as modules using a laser as their light source will continue to
+	 * be active when the fiber is removed. This could be a safety issue and
+	 * we should at least warn the user about that.
+	 */
+	if (!sfp->gpio[GPIO_TX_DISABLE])
+		dev_warn(sfp->dev,
+			 "No tx_disable pin: SFP modules will always be emitting.\n");
+
+	sfp->sfp_bus = sfp_register_socket(sfp->dev, sfp, &sfp_module_ops);
+	if (!sfp->sfp_bus)
+		return -ENOMEM;
 
 	return 0;
 }

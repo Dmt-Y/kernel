@@ -272,7 +272,6 @@ static int ip6_tnl_create2(struct net_device *dev)
 
 	strcpy(t->parms.name, dev->name);
 
-	dev_hold(dev);
 	ip6_tnl_link(ip6n, t);
 	return 0;
 
@@ -1697,11 +1696,11 @@ int ip6_tnl_change_mtu(struct net_device *dev, int new_mtu)
 {
 	struct ip6_tnl *tnl = netdev_priv(dev);
 
-	if (tnl->parms.proto == IPPROTO_IPIP) {
-		if (new_mtu < ETH_MIN_MTU)
+	if (tnl->parms.proto == IPPROTO_IPV6) {
+		if (new_mtu < IPV6_MIN_MTU)
 			return -EINVAL;
 	} else {
-		if (new_mtu < IPV6_MIN_MTU)
+		if (new_mtu < ETH_MIN_MTU)
 			return -EINVAL;
 	}
 	if (tnl->parms.proto == IPPROTO_IPV6 || tnl->parms.proto == 0) {
@@ -1860,6 +1859,7 @@ ip6_tnl_dev_init_gen(struct net_device *dev)
 	dev->min_mtu = ETH_MIN_MTU;
 	dev->max_mtu = IP6_MAX_MTU - dev->hard_header_len;
 
+	dev_hold(dev);
 	return 0;
 
 destroy_dst:
@@ -1903,7 +1903,6 @@ static int __net_init ip6_fb_tnl_dev_init(struct net_device *dev)
 	struct ip6_tnl_net *ip6n = net_generic(net, ip6_tnl_net_id);
 
 	t->parms.proto = IPPROTO_IPV6;
-	dev_hold(dev);
 
 	rcu_assign_pointer(ip6n->tnls_wc[0], t);
 	return 0;
@@ -2004,14 +2003,14 @@ static int ip6_tnl_newlink(struct net *src_net, struct net_device *dev,
 {
 	struct net *net = dev_net(dev);
 	struct ip6_tnl_net *ip6n = net_generic(net, ip6_tnl_net_id);
-	struct ip6_tnl *nt, *t;
 	struct ip_tunnel_encap ipencap;
+	struct ip6_tnl *nt, *t;
+	int err;
 
 	nt = netdev_priv(dev);
 
 	if (ip6_tnl_netlink_encap_parms(data, &ipencap)) {
-		int err = ip6_tnl_encap_setup(nt, &ipencap);
-
+		err = ip6_tnl_encap_setup(nt, &ipencap);
 		if (err < 0)
 			return err;
 	}
@@ -2027,7 +2026,11 @@ static int ip6_tnl_newlink(struct net *src_net, struct net_device *dev,
 			return -EEXIST;
 	}
 
-	return ip6_tnl_create2(dev);
+	err = ip6_tnl_create2(dev);
+	if (!err && tb[IFLA_MTU])
+		ip6_tnl_change_mtu(dev, nla_get_u32(tb[IFLA_MTU]));
+
+	return err;
 }
 
 static int ip6_tnl_changelink(struct net_device *dev, struct nlattr *tb[],

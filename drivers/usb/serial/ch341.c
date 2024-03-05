@@ -255,7 +255,15 @@ static int ch341_set_baudrate_lcr(struct usb_device *dev,
 	if (priv->version < 0x30)
 		return 0;
 
-	val |= BIT(7);
+	/*
+	 * CH341A buffers data until a full endpoint-size packet (32 bytes)
+	 * has been received unless bit 7 is set.
+	 *
+	 * At least one device with version 0x27 appears to have this bit
+	 * inverted.
+	 */
+	if (priv->version > 0x27)
+		val |= BIT(7);
 
 	r = ch341_control_out(dev, CH341_REQ_WRITE_REG, 0x1312, val);
 	if (r)

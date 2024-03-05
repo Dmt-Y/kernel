@@ -1665,7 +1665,8 @@ static int compat_match_to_user(struct ebt_entry_match *m, void __user **dstptr,
 	int off = ebt_compat_match_offset(match, m->match_size);
 	compat_uint_t msize = m->match_size - off;
 
-	BUG_ON(off >= m->match_size);
+	if (WARN_ON(off >= m->match_size))
+		return -EINVAL;
 
 	if (copy_to_user(cm->u.name, match->name,
 	    strlen(match->name) + 1) || put_user(msize, &cm->match_size))
@@ -1695,7 +1696,8 @@ static int compat_target_to_user(struct ebt_entry_target *t,
 	int off = xt_compat_target_offset(target);
 	compat_uint_t tsize = t->target_size - off;
 
-	BUG_ON(off >= t->target_size);
+	if (WARN_ON(off >= t->target_size))
+		return -EINVAL;
 
 	if (copy_to_user(cm->u.name, target->name,
 	    strlen(target->name) + 1) || put_user(tsize, &cm->match_size))
@@ -1837,16 +1839,29 @@ static int compat_calc_entry(const struct ebt_entry *e,
 	return 0;
 }
 
+static int ebt_compat_init_offsets(unsigned int number)
+{
+	if (number > INT_MAX)
+		return -EINVAL;
+
+	/* also count the base chain policies */
+	number += NF_BR_NUMHOOKS;
+
+	return __xt_compat_init_offsets(NFPROTO_BRIDGE, number);
+}
 
 static int compat_table_info(const struct ebt_table_info *info,
 			     struct compat_ebt_replace *newinfo)
 {
 	unsigned int size = info->entries_size;
 	const void *entries = info->entries;
+	int ret;
 
 	newinfo->entries_size = size;
+	ret = ebt_compat_init_offsets(info->nentries);
+	if (ret)
+		return ret;
 
-	xt_compat_init_offsets(NFPROTO_BRIDGE, info->nentries);
 	return EBT_ENTRY_ITERATE(entries, size, compat_calc_entry, info,
 							entries, newinfo);
 }
@@ -1926,7 +1941,8 @@ static int ebt_buf_add(struct ebt_entries_buf_state *state,
 	if (state->buf_kern_start == NULL)
 		goto count_only;
 
-	BUG_ON(state->buf_kern_offset + sz > state->buf_kern_len);
+	if (WARN_ON(state->buf_kern_offset + sz > state->buf_kern_len))
+		return -EINVAL;
 
 	memcpy(state->buf_kern_start + state->buf_kern_offset, data, sz);
 
@@ -1939,7 +1955,8 @@ static int ebt_buf_add_pad(struct ebt_entries_buf_state *state, unsigned int sz)
 {
 	char *b = state->buf_kern_start;
 
-	BUG_ON(b && state->buf_kern_offset > state->buf_kern_len);
+	if (WARN_ON(b && state->buf_kern_offset > state->buf_kern_len))
+		return -EINVAL;
 
 	if (b != NULL && sz > 0)
 		memset(b + state->buf_kern_offset, 0, sz);
@@ -2017,8 +2034,10 @@ static int compat_mtw_from_user(struct compat_ebt_entry_mwt *mwt,
 	pad = XT_ALIGN(size_kern) - size_kern;
 
 	if (pad > 0 && dst) {
-		BUG_ON(state->buf_kern_len <= pad);
-		BUG_ON(state->buf_kern_offset - (match_size + off) + size_kern > state->buf_kern_len - pad);
+		if (WARN_ON(state->buf_kern_len <= pad))
+			return -EINVAL;
+		if (WARN_ON(state->buf_kern_offset - (match_size + off) + size_kern > state->buf_kern_len - pad))
+			return -EINVAL;
 		memset(dst + size_kern, 0, pad);
 	}
 	return off + match_size;
@@ -2068,7 +2087,8 @@ static int ebt_size_mwt(struct compat_ebt_entry_mwt *match32,
 		if (ret < 0)
 			return ret;
 
-		BUG_ON(ret < match32->match_size);
+		if (WARN_ON(ret < match32->match_size))
+			return -EINVAL;
 		growth += ret - match32->match_size;
 		growth += ebt_compat_entry_padsize();
 
@@ -2181,7 +2201,8 @@ static int size_entry_mwt(struct ebt_entry *entry, const unsigned char *base,
 
 	startoff = state->buf_user_offset - startoff;
 
-	BUG_ON(*total < startoff);
+	if (WARN_ON(*total < startoff))
+		return -EINVAL;
 	*total -= startoff;
 	return 0;
 }
@@ -2288,7 +2309,10 @@ static int compat_do_replace(struct net *net, void __user *user,
 
 	xt_compat_lock(NFPROTO_BRIDGE);
 
-	xt_compat_init_offsets(NFPROTO_BRIDGE, tmp.nentries);
+	ret = ebt_compat_init_offsets(tmp.nentries);
+	if (ret < 0)
+		goto out_unlock;
+
 	ret = compat_copy_entries(entries_tmp, tmp.entries_size, &state);
 	if (ret < 0)
 		goto out_unlock;
@@ -2310,7 +2334,8 @@ static int compat_do_replace(struct net *net, void __user *user,
 	state.buf_kern_len = size64;
 
 	ret = compat_copy_entries(entries_tmp, tmp.entries_size, &state);
-	BUG_ON(ret < 0);	/* parses same data again */
+	if (WARN_ON(ret < 0))
+		goto out_unlock;
 
 	vfree(entries_tmp);
 	tmp.entries_size = size64;

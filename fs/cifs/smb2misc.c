@@ -181,6 +181,21 @@ smb2_check_message(char *buf, unsigned int len, struct TCP_Server_Info *server)
 	}
 
 	mid = le64_to_cpu(shdr->MessageId);
+	if (check_smb2_hdr(shdr, mid))
+		return 1;
+
+	if (shdr->StructureSize != SMB2_HEADER_STRUCTURE_SIZE) {
+		cifs_dbg(VFS, "Invalid structure size %u\n",
+			 le16_to_cpu(shdr->StructureSize));
+		return 1;
+	}
+
+	command = le16_to_cpu(shdr->Command);
+	if (command >= NUMBER_OF_SMB2_COMMANDS) {
+		cifs_dbg(VFS, "Invalid SMB2 command %d\n", command);
+		return 1;
+	}
+
 	if (len < pdu_size) {
 		if ((len >= hdr_size)
 		    && (shdr->Status != 0)) {
@@ -198,21 +213,6 @@ smb2_check_message(char *buf, unsigned int len, struct TCP_Server_Info *server)
 	if (len > CIFSMaxBufSize + MAX_SMB2_HDR_SIZE) {
 		cifs_dbg(VFS, "SMB length greater than maximum, mid=%llu\n",
 			 mid);
-		return 1;
-	}
-
-	if (check_smb2_hdr(shdr, mid))
-		return 1;
-
-	if (shdr->StructureSize != SMB2_HEADER_STRUCTURE_SIZE) {
-		cifs_dbg(VFS, "Illegal structure size %u\n",
-			 le16_to_cpu(shdr->StructureSize));
-		return 1;
-	}
-
-	command = le16_to_cpu(shdr->Command);
-	if (command >= NUMBER_OF_SMB2_COMMANDS) {
-		cifs_dbg(VFS, "Illegal SMB2 command %d\n", command);
 		return 1;
 	}
 
@@ -260,7 +260,7 @@ smb2_check_message(char *buf, unsigned int len, struct TCP_Server_Info *server)
 		 * Some windows servers (win2016) will pad also the final
 		 * PDU in a compound to 8 bytes.
 		 */
-		if (((calc_len + 7) & ~7) == len)
+		if (ALIGN(calc_len, 8) == len)
 			return 0;
 
 		/*
@@ -879,8 +879,8 @@ int
 smb311_update_preauth_hash(struct cifs_ses *ses, struct kvec *iov, int nvec)
 {
 	int i, rc;
-	struct sdesc *d;
 	struct smb2_sync_hdr *hdr;
+	struct shash_desc *sha512 = NULL;
 
 	if (ses->server->tcpStatus == CifsGood) {
 		/* skip non smb311 connections */
@@ -897,14 +897,14 @@ smb311_update_preauth_hash(struct cifs_ses *ses, struct kvec *iov, int nvec)
 	if (rc)
 		return rc;
 
-	d = ses->server->secmech.sdescsha512;
-	rc = crypto_shash_init(&d->shash);
+	sha512 = ses->server->secmech.sha512;
+	rc = crypto_shash_init(sha512);
 	if (rc) {
 		cifs_dbg(VFS, "%s: could not init sha512 shash\n", __func__);
 		return rc;
 	}
 
-	rc = crypto_shash_update(&d->shash, ses->preauth_sha_hash,
+	rc = crypto_shash_update(sha512, ses->preauth_sha_hash,
 				 SMB2_PREAUTH_HASH_SIZE);
 	if (rc) {
 		cifs_dbg(VFS, "%s: could not update sha512 shash\n", __func__);
@@ -912,8 +912,7 @@ smb311_update_preauth_hash(struct cifs_ses *ses, struct kvec *iov, int nvec)
 	}
 
 	for (i = 0; i < nvec; i++) {
-		rc = crypto_shash_update(&d->shash,
-					 iov[i].iov_base, iov[i].iov_len);
+		rc = crypto_shash_update(sha512, iov[i].iov_base, iov[i].iov_len);
 		if (rc) {
 			cifs_dbg(VFS, "%s: could not update sha512 shash\n",
 				 __func__);
@@ -921,7 +920,7 @@ smb311_update_preauth_hash(struct cifs_ses *ses, struct kvec *iov, int nvec)
 		}
 	}
 
-	rc = crypto_shash_final(&d->shash, ses->preauth_sha_hash);
+	rc = crypto_shash_final(sha512, ses->preauth_sha_hash);
 	if (rc) {
 		cifs_dbg(VFS, "%s: could not finalize sha512 shash\n",
 			 __func__);

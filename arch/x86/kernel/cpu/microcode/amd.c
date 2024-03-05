@@ -528,7 +528,7 @@ static enum ucode_state apply_microcode_amd(int cpu)
 	rdmsr(MSR_AMD64_PATCH_LEVEL, rev, dummy);
 
 	/* need to apply patch? */
-	if (rev >= mc_amd->hdr.patch_id) {
+	if (rev > mc_amd->hdr.patch_id) {
 		ret = UCODE_OK;
 		goto out;
 	}
@@ -646,6 +646,7 @@ static int verify_and_add_patch(u8 family, u8 *fw, unsigned int leftover)
 		kfree(patch);
 		return -EINVAL;
 	}
+	patch->size = patch_size;
 
 	INIT_LIST_HEAD(&patch->plist);
 	patch->patch_id  = mc_hdr->patch_id;
@@ -725,7 +726,7 @@ load_microcode_amd(bool save, u8 family, const u8 *data, size_t size)
 		return ret;
 
 	memset(amd_ucode_patch, 0, PATCH_MAX_SIZE);
-	memcpy(amd_ucode_patch, p->data, min_t(u32, ksize(p->data), PATCH_MAX_SIZE));
+	memcpy(amd_ucode_patch, p->data, min_t(u32, p->size, PATCH_MAX_SIZE));
 
 	return ret;
 }

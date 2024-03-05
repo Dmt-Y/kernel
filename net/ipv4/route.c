@@ -159,8 +159,6 @@ static struct neighbour *ipv4_neigh_lookup(const struct dst_entry *dst,
 					   const void *daddr);
 static void ipv4_confirm_neigh(const struct dst_entry *dst, const void *daddr);
 
-static void rt_add_uncached_list(struct rtable *rt);
-
 static struct dst_ops ipv4_dst_ops = {
 	.family =		AF_INET,
 	.check =		ipv4_dst_check,
@@ -1217,6 +1215,7 @@ static struct dst_entry *ipv4_dst_check(struct dst_entry *dst, u32 cookie)
 
 static void ipv4_send_dest_unreach(struct sk_buff *skb)
 {
+	struct net_device *dev;
 	struct ip_options opt;
 	int res;
 
@@ -1234,7 +1233,8 @@ static void ipv4_send_dest_unreach(struct sk_buff *skb)
 		opt.optlen = ip_hdr(skb)->ihl * 4 - sizeof(struct iphdr);
 
 		rcu_read_lock();
-		res = __ip_options_compile(dev_net(skb->dev), &opt, skb, NULL);
+		dev = skb->dev ? skb->dev : skb_rtable(skb)->dst.dev;
+		res = __ip_options_compile(dev_net(dev), &opt, skb, NULL);
 		rcu_read_unlock();
 
 		if (res)
@@ -1319,7 +1319,7 @@ static void set_class_tag(struct rtable *rt, u32 tag)
 static unsigned int ipv4_default_advmss(const struct dst_entry *dst)
 {
 	unsigned int header_size = sizeof(struct tcphdr) + sizeof(struct iphdr);
-	unsigned int advmss = max_t(unsigned int, dst->dev->mtu - header_size,
+	unsigned int advmss = max_t(unsigned int, ipv4_mtu(dst) - header_size,
 				    ip_rt_min_advmss);
 
 	return min(advmss, IPV4_MAX_PMTU - header_size);
@@ -1491,7 +1491,7 @@ struct uncached_list {
 
 static DEFINE_PER_CPU_ALIGNED(struct uncached_list, rt_uncached_list);
 
-static void rt_add_uncached_list(struct rtable *rt)
+void rt_add_uncached_list(struct rtable *rt)
 {
 	struct uncached_list *ul = raw_cpu_ptr(&rt_uncached_list);
 
@@ -1502,14 +1502,8 @@ static void rt_add_uncached_list(struct rtable *rt)
 	spin_unlock_bh(&ul->lock);
 }
 
-static void ipv4_dst_destroy(struct dst_entry *dst)
+void rt_del_uncached_list(struct rtable *rt)
 {
-	struct dst_metrics *p = (struct dst_metrics *)DST_METRICS_PTR(dst);
-	struct rtable *rt = (struct rtable *) dst;
-
-	if (p != &dst_default_metrics && atomic_dec_and_test(&p->refcnt))
-		kfree(p);
-
 	if (!list_empty(&rt->rt_uncached)) {
 		struct uncached_list *ul = rt->rt_uncached_list;
 
@@ -1517,6 +1511,17 @@ static void ipv4_dst_destroy(struct dst_entry *dst)
 		list_del(&rt->rt_uncached);
 		spin_unlock_bh(&ul->lock);
 	}
+}
+
+static void ipv4_dst_destroy(struct dst_entry *dst)
+{
+	struct dst_metrics *p = (struct dst_metrics *)DST_METRICS_PTR(dst);
+	struct rtable *rt = (struct rtable *)dst;
+
+	if (p != &dst_default_metrics && atomic_dec_and_test(&p->refcnt))
+		kfree(p);
+
+	rt_del_uncached_list(rt);
 }
 
 void rt_flush_dev(struct net_device *dev)
@@ -2338,14 +2343,15 @@ struct rtable *__ip_route_output_key_hash(struct net *net, struct flowi4 *fl4,
 	struct net_device *dev_out = NULL;
 	__u8 tos = RT_FL_TOS(fl4);
 	unsigned int flags = 0;
-	struct fib_result res;
+	struct fib_result res = {
+		.type           = RTN_UNSPEC,
+		.fi             = NULL,
+		.table          = NULL,
+		.tclassid       = 0,
+	};
 	struct rtable *rth;
 	int orig_oif;
 	int err;
-
-	res.tclassid	= 0;
-	res.fi		= NULL;
-	res.table	= NULL;
 
 	orig_oif = fl4->flowi4_oif;
 
@@ -2806,12 +2812,13 @@ static int inet_rtm_getroute(struct sk_buff *in_skb, struct nlmsghdr *nlh,
 		err = 0;
 		if (IS_ERR(rt))
 			err = PTR_ERR(rt);
+		else
+			skb_dst_set(skb, &rt->dst);
 	}
 
 	if (err)
 		goto errout_free;
 
-	skb_dst_set(skb, &rt->dst);
 	if (rtm->rtm_flags & RTM_F_NOTIFY)
 		rt->rt_flags |= RTCF_NOTIFY;
 

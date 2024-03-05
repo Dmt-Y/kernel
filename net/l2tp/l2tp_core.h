@@ -58,7 +58,6 @@ struct l2tp_session_cfg {
 	int			debug;		/* bitmask of debug message
 						 * categories */
 	u16			vlan_id;	/* VLAN pseudowire only */
-	u16			offset;		/* offset to payload */
 	u16			l2specific_len;	/* Layer 2 specific length */
 	u16			l2specific_type; /* Layer 2 specific type */
 	u8			cookie[8];	/* optional cookie */
@@ -85,8 +84,6 @@ struct l2tp_session {
 	int			cookie_len;
 	u8			peer_cookie[8];
 	int			peer_cookie_len;
-	u16			offset;		/* offset from end of L2TP header
-						   to beginning of data */
 	u16			l2specific_len;
 	u16			l2specific_type;
 	u16			hdr_len;
@@ -243,6 +240,8 @@ out:
 }
 
 struct l2tp_tunnel *l2tp_tunnel_get(const struct net *net, u32 tunnel_id);
+struct l2tp_tunnel *l2tp_tunnel_get_nth(const struct net *net, int nth);
+
 void l2tp_tunnel_free(struct l2tp_tunnel *tunnel);
 
 struct l2tp_session *l2tp_session_get(const struct net *net,
@@ -251,12 +250,13 @@ struct l2tp_session *l2tp_session_get(const struct net *net,
 struct l2tp_session *l2tp_session_get_nth(struct l2tp_tunnel *tunnel, int nth);
 struct l2tp_session *l2tp_session_get_by_ifname(const struct net *net,
 						const char *ifname);
-struct l2tp_tunnel *l2tp_tunnel_find(const struct net *net, u32 tunnel_id);
-struct l2tp_tunnel *l2tp_tunnel_find_nth(const struct net *net, int nth);
 
 int l2tp_tunnel_create(struct net *net, int fd, int version, u32 tunnel_id,
 		       u32 peer_tunnel_id, struct l2tp_tunnel_cfg *cfg,
 		       struct l2tp_tunnel **tunnelp);
+int l2tp_tunnel_register(struct l2tp_tunnel *tunnel, struct net *net,
+			 struct l2tp_tunnel_cfg *cfg);
+
 void l2tp_tunnel_closeall(struct l2tp_tunnel *tunnel);
 void l2tp_tunnel_delete(struct l2tp_tunnel *tunnel);
 struct l2tp_session *l2tp_session_create(int priv_size,
@@ -330,23 +330,34 @@ do {									\
 #endif
 
 static inline int l2tp_v3_ensure_opt_in_linear(struct l2tp_session *session, struct sk_buff *skb,
-					       unsigned char **ptr, unsigned char **optr)
+                                              unsigned char **ptr, unsigned char **optr)
 {
-	int opt_len = session->peer_cookie_len + session->l2specific_len;
+       int opt_len = session->peer_cookie_len + session->l2specific_len;
 
-	if (opt_len > 0) {
-		int off = *ptr - *optr;
+       if (opt_len > 0) {
+               int off = *ptr - *optr;
 
-		if (!pskb_may_pull(skb, off + opt_len))
-			return -1;
+               if (!pskb_may_pull(skb, off + opt_len))
+                       return -1;
 
-		if (skb->data != *optr) {
-			*optr = skb->data;
-			*ptr = skb->data + off;
-		}
-	}
+               if (skb->data != *optr) {
+                       *optr = skb->data;
+                       *ptr = skb->data + off;
+               }
+       }
 
-	return 0;
+       return 0;
+}
+
+static inline int l2tp_get_l2specific_len(struct l2tp_session *session)
+{
+       switch (session->l2specific_type) {
+       case L2TP_L2SPECTYPE_DEFAULT:
+               return 4;
+       case L2TP_L2SPECTYPE_NONE:
+       default:
+               return 0;
+       }
 }
 
 #define l2tp_printk(ptr, type, func, fmt, ...)				\

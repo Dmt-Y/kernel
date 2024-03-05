@@ -635,11 +635,8 @@ struct transaction_s
 	 */
 	struct journal_head	*t_checkpoint_list;
 
-	/*
-	 * Doubly-linked circular list of all buffers submitted for IO while
-	 * checkpointing. [j_list_lock]
-	 */
-	struct journal_head	*t_checkpoint_io_list;
+	/* Unused, kept for kABI compatibility */
+	struct journal_head     *t_checkpoint_io_list;
 
 	/*
 	 * Doubly-linked circular list of metadata buffers being shadowed by log
@@ -1297,6 +1294,7 @@ extern void jbd2_journal_commit_transaction(journal_t *);
 /* Checkpoint list management */
 void __jbd2_journal_clean_checkpoint_list(journal_t *journal, bool destroy);
 int __jbd2_journal_remove_checkpoint(struct journal_head *);
+int jbd2_journal_try_remove_checkpoint(struct journal_head *jh);
 void jbd2_journal_destroy_checkpoint(journal_t *journal);
 void __jbd2_journal_insert_checkpoint(struct journal_head *, transaction_t *);
 

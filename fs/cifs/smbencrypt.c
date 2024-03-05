@@ -121,29 +121,28 @@ int
 mdfour(unsigned char *md4_hash, unsigned char *link_str, int link_len)
 {
 	int rc;
-	struct crypto_shash *md4 = NULL;
-	struct sdesc *sdescmd4 = NULL;
+	struct shash_desc *md4 = NULL;
 
-	rc = cifs_alloc_hash("md4", &md4, &sdescmd4);
+	rc = cifs_alloc_hash("md4", &md4);
 	if (rc)
 		goto mdfour_err;
 
-	rc = crypto_shash_init(&sdescmd4->shash);
+	rc = crypto_shash_init(md4);
 	if (rc) {
 		cifs_dbg(VFS, "%s: Could not init md4 shash\n", __func__);
 		goto mdfour_err;
 	}
-	rc = crypto_shash_update(&sdescmd4->shash, link_str, link_len);
+	rc = crypto_shash_update(md4, link_str, link_len);
 	if (rc) {
 		cifs_dbg(VFS, "%s: Could not update with link_str\n", __func__);
 		goto mdfour_err;
 	}
-	rc = crypto_shash_final(&sdescmd4->shash, md4_hash);
+	rc = crypto_shash_final(md4, md4_hash);
 	if (rc)
 		cifs_dbg(VFS, "%s: Could not generate md4 hash\n", __func__);
 
 mdfour_err:
-	cifs_free_hash(&md4, &sdescmd4);
+	cifs_free_hash(&md4);
 	return rc;
 }
 

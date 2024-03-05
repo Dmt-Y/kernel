@@ -12,8 +12,11 @@
 /*
  * Defines x86 CPU feature bits
  */
-#define NCAPINTS			19	   /* N 32-bit words worth of info */
+#define NCAPINTS	19      /* N 32-bit words worth of info */
 #define NBUGINTS	1	/* N 32-bit bug flags */
+#define NEXTCAPINTS     2       /* N 32-bit words which come after NCAPINTS */
+#define NEXTBUGINTS     1       /* N 32-bit words which come after NEXTCAPINTS */
+
 
 /*
  * Note: If the comment begins with a quoted string, that string is used
@@ -98,7 +101,7 @@
 #define X86_FEATURE_SYSENTER32	( 3*32+15) /* "" sysenter in ia32 userspace */
 #define X86_FEATURE_REP_GOOD	( 3*32+16) /* rep microcode works well */
 #define X86_FEATURE_MFENCE_RDTSC ( 3*32+17) /* "" Mfence synchronizes RDTSC */
-#define X86_FEATURE_LFENCE_RDTSC ( 3*32+18) /* "" Lfence synchronizes RDTSC */
+#define X86_FEATURE_CLEAR_CPU_BUF ( 3*32+18) /* "" Clear CPU buffers using VERW */
 #define X86_FEATURE_ACC_POWER	( 3*32+19) /* AMD Accumulated Power Mechanism */
 #define X86_FEATURE_NOPL	( 3*32+20) /* The NOPL (0F 1F) instructions */
 #define X86_FEATURE_ALWAYS	( 3*32+21) /* "" Always-present feature */
@@ -221,7 +224,7 @@
 #define X86_FEATURE_STIBP		( 7*32+28) /* Single Thread Indirect Branch Predictors */
 #define X86_FEATURE_ZEN			( 7*32+29) /* "" CPU is AMD family 0x17 (Zen) */
 #define X86_FEATURE_IBRS_ENHANCED	( 7*32+30) /* Enhanced IBRS */
-#define X86_FEATURE_L1TF_FIX		( 7*32+31) /* "" L1TF workaround used */
+#define X86_FEATURE_L1TF_PTEINV	( 7*32+31) /* "" L1TF workaround PTE inversion */
 
 /* Virtualization flags: Linux defined, word 8 */
 #define X86_FEATURE_TPR_SHADOW  ( 8*32+ 0) /* Intel TPR Shadow */
@@ -233,6 +236,8 @@
 #define X86_FEATURE_VMMCALL     ( 8*32+15) /* Prefer vmmcall to vmcall */
 #define X86_FEATURE_XENPV       ( 8*32+16) /* "" Xen paravirtual guest */
 
+#define X86_FEATURE_VMCALL		( 8*32+18) /* "" Hypervisor supports the VMCALL instruction */
+#define X86_FEATURE_VMW_VMMCALL		( 8*32+19) /* "" VMware prefers VMMCALL hypercall instruction */
 
 /* Intel-defined CPU features, CPUID level 0x00000007:0 (ebx), word 9 */
 #define X86_FEATURE_FSGSBASE	( 9*32+ 0) /* {RD/WR}{FS/GS}BASE instructions*/
@@ -290,6 +295,10 @@
 #define X86_FEATURE_UNRET		(11*32+15) /* "" AMD BTB untrain return */
 #define X86_FEATURE_RSB_VMEXIT_LITE	(11*32+17) /* "" Fill RSB on VM exit when EIBRS is enabled */
 
+#define X86_FEATURE_SRSO		(11*32+24) /* "" AMD BTB untrain RETs */
+#define X86_FEATURE_SRSO_ALIAS		(11*32+25) /* "" AMD BTB untrain RETs through aliasing */
+#define X86_FEATURE_IBPB_ON_VMEXIT	(11*32+26) /* "" Issue an IBPB only on VMEXIT */
+
 /* Intel-defined CPU features, CPUID level 0x00000007:1 (EAX), word 12 */
 #define X86_FEATURE_AVX512_BF16		(12*32+ 5) /* AVX512 BFLOAT16 instructions */
 
@@ -301,6 +310,7 @@
 #define X86_FEATURE_AMD_IBPB		(13*32+12) /* "" Indirect Branch Prediction Barrier */
 #define X86_FEATURE_AMD_IBRS		(13*32+14) /* "" Indirect Branch Restricted Speculation */
 #define X86_FEATURE_AMD_STIBP		(13*32+15) /* "" Single Thread Indirect Branch Predictors */
+#define X86_FEATURE_AMD_STIBP_ALWAYS_ON	(13*32+17) /* "" Single Thread Indirect Branch Predictors always-on preferred */
 #define X86_FEATURE_AMD_SSBD		(13*32+24) /* "" Speculative Store Bypass Disable */
 #define X86_FEATURE_VIRT_SSBD		(13*32+25) /* Virtualized Speculative Store Bypass Disable */
 #define X86_FEATURE_AMD_SSB_NO		(13*32+26) /* "" Speculative Store Bypass is fixed in hardware. */
@@ -371,6 +381,13 @@
 #define X86_FEATURE_ARCH_CAPABILITIES	(18*32+29) /* IA32_ARCH_CAPABILITIES MSR (Intel) */
 #define X86_FEATURE_SPEC_CTRL_SSBD	(18*32+31) /* "" Speculative Store Bypass Disable */
 
+ /* AMD-defined Extended Feature 2 EAX, CPUID level 0x80000021 (EAX), word 20 */
+#define X86_FEATURE_LFENCE_RDTSC	(20*32+ 2) /* "" LFENCE always serializing / synchronizes RDTSC */
+
+#define X86_FEATURE_SBPB		(20*32+27) /* "" Selective Branch Prediction Barrier */
+#define X86_FEATURE_IBPB_BRTYPE		(20*32+28) /* "" MSR_PRED_CMD[IBPB] flushes all branch type predictions */
+#define X86_FEATURE_SRSO_NO		(20*32+29) /* "" CPU is not affected by SRSO */
+
 /*
  * BUG word(s)
  */
@@ -408,7 +425,13 @@
 #define X86_BUG_ITLB_MULTIHIT		X86_BUG(23) /* CPU may incur MCE during certain page attribute changes */
 #define X86_BUG_SRBDS			X86_BUG(24) /* CPU may leak RNG bits if not mitigated */
 #define X86_BUG_MMIO_STALE_DATA		X86_BUG(25) /* CPU is affected by Processor MMIO Stale Data vulnerabilities */
-#define X86_BUG_RETBLEED		X86_BUG(26) /* CPU is affected by RETBleed */
-#define X86_BUG_EIBRS_PBRSB		X86_BUG(27) /* EIBRS is vulnerable to Post Barrier RSB Predictions */
+#define X86_BUG_MMIO_UNKNOWN		X86_BUG(26) /* CPU is too old and its MMIO Stale Data status is unknown */
+#define X86_BUG_RETBLEED		X86_BUG(27) /* CPU is affected by RETBleed */
+#define X86_BUG_EIBRS_PBRSB		X86_BUG(28) /* EIBRS is vulnerable to Post Barrier RSB Predictions */
+#define X86_BUG_SRSO			X86_BUG(29) /* AMD SRSO bug */
+#define X86_BUG_GDS			X86_BUG(30) /* CPU is affected by Gather Data Sampling */
+
+/* First extended bug word */
+#define X86_BUG_DIV0                   X86_BUG(1*32 + 0) /* AMD DIV0 speculation bug */
 
 #endif /* _ASM_X86_CPUFEATURES_H */

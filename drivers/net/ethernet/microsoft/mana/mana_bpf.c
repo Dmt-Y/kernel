@@ -145,6 +145,19 @@ static int mana_xdp_set(struct net_device *ndev, struct bpf_prog *prog,
 	return 0;
 }
 
+static int mana_xdp_query(struct net_device *ndev)
+{
+	struct mana_port_context *apc = netdev_priv(ndev);
+	struct bpf_prog *prog;
+
+	prog = mana_xdp_get(apc);
+
+	if (prog)
+		return prog->aux->id;
+
+	return 0;
+}
+
 int mana_bpf(struct net_device *ndev, struct netdev_bpf *bpf)
 {
 	struct netlink_ext_ack *extack = bpf->extack;
@@ -153,6 +166,8 @@ int mana_bpf(struct net_device *ndev, struct netdev_bpf *bpf)
 	switch (bpf->command) {
 	case XDP_SETUP_PROG:
 		return mana_xdp_set(ndev, bpf->prog, extack);
+	case XDP_QUERY_PROG:
+		return mana_xdp_query(ndev);
 
 	default:
 		return -EOPNOTSUPP;

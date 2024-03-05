@@ -78,7 +78,7 @@ struct IO_APIC_route_entry {
 		__reserved_2	: 15;
 #ifndef __GENKSYMS__
 	__u32	__reserved_3	: 17,
-		ext_dest	:  7,
+		virt_destid_8_14:  7,
 #else
 	__u32   __reserved_3    : 24,
 #endif

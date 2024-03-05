@@ -51,29 +51,28 @@ static int
 symlink_hash(unsigned int link_len, const char *link_str, u8 *md5_hash)
 {
 	int rc;
-	struct crypto_shash *md5 = NULL;
-	struct sdesc *sdescmd5 = NULL;
+	struct shash_desc *md5 = NULL;
 
-	rc = cifs_alloc_hash("md5", &md5, &sdescmd5);
+	rc = cifs_alloc_hash("md5", &md5);
 	if (rc)
 		goto symlink_hash_err;
 
-	rc = crypto_shash_init(&sdescmd5->shash);
+	rc = crypto_shash_init(md5);
 	if (rc) {
 		cifs_dbg(VFS, "%s: Could not init md5 shash\n", __func__);
 		goto symlink_hash_err;
 	}
-	rc = crypto_shash_update(&sdescmd5->shash, link_str, link_len);
+	rc = crypto_shash_update(md5, link_str, link_len);
 	if (rc) {
 		cifs_dbg(VFS, "%s: Could not update with link_str\n", __func__);
 		goto symlink_hash_err;
 	}
-	rc = crypto_shash_final(&sdescmd5->shash, md5_hash);
+	rc = crypto_shash_final(md5, md5_hash);
 	if (rc)
 		cifs_dbg(VFS, "%s: Could not generate md5 hash\n", __func__);
 
 symlink_hash_err:
-	cifs_free_hash(&md5, &sdescmd5);
+	cifs_free_hash(&md5);
 	return rc;
 }
 
@@ -316,14 +315,15 @@ cifs_query_mf_symlink(unsigned int xid, struct cifs_tcon *tcon,
 	int buf_type = CIFS_NO_BUFFER;
 	FILE_ALL_INFO file_info;
 
-	oparms.tcon = tcon;
-	oparms.cifs_sb = cifs_sb;
-	oparms.desired_access = GENERIC_READ;
-	oparms.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR);
-	oparms.disposition = FILE_OPEN;
-	oparms.path = path;
-	oparms.fid = &fid;
-	oparms.reconnect = false;
+	oparms = (struct cifs_open_parms) {
+		.tcon = tcon,
+		.cifs_sb = cifs_sb,
+		.desired_access = GENERIC_READ,
+		.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR),
+		.disposition = FILE_OPEN,
+		.path = path,
+		.fid = &fid,
+	};
 
 	rc = CIFS_open(xid, &oparms, &oplock, &file_info);
 	if (rc)
@@ -358,14 +358,15 @@ cifs_create_mf_symlink(unsigned int xid, struct cifs_tcon *tcon,
 	struct cifs_open_parms oparms;
 	struct cifs_io_parms io_parms;
 
-	oparms.tcon = tcon;
-	oparms.cifs_sb = cifs_sb;
-	oparms.desired_access = GENERIC_WRITE;
-	oparms.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR);
-	oparms.disposition = FILE_CREATE;
-	oparms.path = path;
-	oparms.fid = &fid;
-	oparms.reconnect = false;
+	oparms = (struct cifs_open_parms) {
+		.tcon = tcon,
+		.cifs_sb = cifs_sb,
+		.desired_access = GENERIC_WRITE,
+		.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR),
+		.disposition = FILE_CREATE,
+		.path = path,
+		.fid = &fid,
+	};
 
 	rc = CIFS_open(xid, &oparms, &oplock, NULL);
 	if (rc)
@@ -399,13 +400,14 @@ smb3_query_mf_symlink(unsigned int xid, struct cifs_tcon *tcon,
 	__u8 oplock = SMB2_OPLOCK_LEVEL_NONE;
 	struct smb2_file_all_info *pfile_info = NULL;
 
-	oparms.tcon = tcon;
-	oparms.cifs_sb = cifs_sb;
-	oparms.desired_access = GENERIC_READ;
-	oparms.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR);
-	oparms.disposition = FILE_OPEN;
-	oparms.fid = &fid;
-	oparms.reconnect = false;
+	oparms = (struct cifs_open_parms) {
+		.tcon = tcon,
+		.cifs_sb = cifs_sb,
+		.desired_access = GENERIC_READ,
+		.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR),
+		.disposition = FILE_OPEN,
+		.fid = &fid,
+	};
 
 	utf16_path = cifs_convert_path_to_utf16(path, cifs_sb);
 	if (utf16_path == NULL)
@@ -465,13 +467,16 @@ smb3_create_mf_symlink(unsigned int xid, struct cifs_tcon *tcon,
 	if (!utf16_path)
 		return -ENOMEM;
 
-	oparms.tcon = tcon;
-	oparms.cifs_sb = cifs_sb;
-	oparms.desired_access = GENERIC_WRITE;
-	oparms.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR);
-	oparms.disposition = FILE_CREATE;
-	oparms.fid = &fid;
-	oparms.reconnect = false;
+	oparms = (struct cifs_open_parms) {
+		.tcon = tcon,
+		.cifs_sb = cifs_sb,
+		.desired_access = GENERIC_WRITE,
+		.create_options = cifs_create_options(cifs_sb, CREATE_NOT_DIR),
+		.disposition = FILE_CREATE,
+		.fid = &fid,
+		.reconnect = false,
+		.mode = 0644,
+	};
 
 	rc = SMB2_open(xid, &oparms, utf16_path, &oplock, NULL, NULL,
 		       NULL, NULL);

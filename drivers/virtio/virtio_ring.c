@@ -832,6 +832,9 @@ bool virtqueue_poll(struct virtqueue *_vq, unsigned last_used_idx)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
 
+	if (unlikely(vq->broken))
+		return false;
+
 	virtio_mb(vq->weak_barriers);
 	return (u16)last_used_idx != virtio16_to_cpu(_vq->vdev, vq->vring.used->idx);
 }
@@ -968,6 +971,7 @@ struct virtqueue *__vring_new_virtqueue(unsigned int index,
 {
 	unsigned int i;
 	struct vring_virtqueue *vq;
+	unsigned long flags;
 
 	vq = kmalloc(sizeof(*vq) + vring.num * sizeof(struct vring_desc_state),
 		     GFP_KERNEL);
@@ -990,7 +994,9 @@ struct virtqueue *__vring_new_virtqueue(unsigned int index,
 	vq->avail_flags_shadow = 0;
 	vq->avail_idx_shadow = 0;
 	vq->num_added = 0;
+	spin_lock_irqsave(&vdev->config_lock, flags);
 	list_add_tail(&vq->vq.list, &vdev->vqs);
+	spin_unlock_irqrestore(&vdev->config_lock, flags);
 #ifdef DEBUG
 	vq->in_use = false;
 	vq->last_add_time_valid = false;
@@ -1022,7 +1028,7 @@ size_t virtio_max_dma_size(struct virtio_device *vdev)
 	size_t max_segment_size = SIZE_MAX;
 
 	if (vring_use_dma_api(vdev))
-		max_segment_size = dma_max_mapping_size(&vdev->dev);
+		max_segment_size = dma_max_mapping_size(vdev->dev.parent);
 
 	return max_segment_size;
 }
@@ -1156,12 +1162,15 @@ EXPORT_SYMBOL_GPL(vring_new_virtqueue);
 void vring_del_virtqueue(struct virtqueue *_vq)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
+	unsigned long flags;
 
 	if (vq->we_own_ring) {
 		vring_free_queue(vq->vq.vdev, vq->queue_size_in_bytes,
 				 vq->vring.desc, vq->queue_dma_addr);
 	}
+	spin_lock_irqsave(&vq->vq.vdev->config_lock, flags);
 	list_del(&_vq->list);
+	spin_unlock_irqrestore(&vq->vq.vdev->config_lock, flags);
 	kfree(vq);
 }
 EXPORT_SYMBOL_GPL(vring_del_virtqueue);
@@ -1209,7 +1218,7 @@ bool virtqueue_is_broken(struct virtqueue *_vq)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
 
-	return vq->broken;
+	return READ_ONCE(vq->broken);
 }
 EXPORT_SYMBOL_GPL(virtqueue_is_broken);
 
@@ -1220,11 +1229,16 @@ EXPORT_SYMBOL_GPL(virtqueue_is_broken);
 void virtio_break_device(struct virtio_device *dev)
 {
 	struct virtqueue *_vq;
+	unsigned long flags;
 
+	spin_lock_irqsave(&dev->config_lock, flags);
 	list_for_each_entry(_vq, &dev->vqs, list) {
 		struct vring_virtqueue *vq = to_vvq(_vq);
-		vq->broken = true;
+
+		/* Pairs with READ_ONCE() in virtqueue_is_broken(). */
+		WRITE_ONCE(vq->broken, true);
 	}
+	spin_unlock_irqrestore(&dev->config_lock, flags);
 }
 EXPORT_SYMBOL_GPL(virtio_break_device);
 

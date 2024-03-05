@@ -1,4 +1,5 @@
 #include <linux/uaccess.h>
+#include <linux/nospec.h>
 
 /* out-of-line parts */
 
@@ -6,8 +7,15 @@
 unsigned long _copy_from_user(void *to, const void __user *from, unsigned long n)
 {
 	unsigned long res = n;
-	if (likely(access_ok(VERIFY_READ, from, n)))
+	if (likely(access_ok(VERIFY_READ, from, n))) {
+		/*
+		 * Ensure that bad access_ok() speculation will not
+		 * lead to nasty side effects *after* the copy is
+		 * finished:
+		 */
+		barrier_nospec();
 		res = raw_copy_from_user(to, from, n);
+	}
 	if (unlikely(res))
 		memset(to + (n - res), 0, res);
 	return res;

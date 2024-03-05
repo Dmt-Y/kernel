@@ -147,6 +147,7 @@ struct page *page_table_alloc_pgste(struct mm_struct *mm)
 	page = alloc_page(GFP_KERNEL);
 	if (page) {
 		table = (unsigned long *) page_to_phys(page);
+		arch_set_page_dat(virt_to_page(table), 0);
 		clear_table(table, _PAGE_INVALID, PAGE_SIZE/2);
 		clear_table(table + PTRS_PER_PTE, 0, PAGE_SIZE/2);
 	}

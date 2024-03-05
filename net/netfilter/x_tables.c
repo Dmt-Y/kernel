@@ -424,6 +424,36 @@ textify_hooks(char *buf, size_t size, unsigned int mask, uint8_t nfproto)
 	return buf;
 }
 
+/**
+ * xt_check_proc_name - check that name is suitable for /proc file creation
+ *
+ * @name: file name candidate
+ * @size: length of buffer
+ *
+ * some x_tables modules wish to create a file in /proc.
+ * This function makes sure that the name is suitable for this
+ * purpose, it checks that name is NUL terminated and isn't a 'special'
+ * name, like "..".
+ *
+ * returns negative number on error or 0 if name is useable.
+ */
+int xt_check_proc_name(const char *name, unsigned int size)
+{
+	if (name[0] == '\0')
+		return -EINVAL;
+
+	if (strnlen(name, size) == size)
+		return -ENAMETOOLONG;
+
+	if (strcmp(name, ".") == 0 ||
+	    strcmp(name, "..") == 0 ||
+	    strchr(name, '/'))
+		return -EINVAL;
+
+	return 0;
+}
+EXPORT_SYMBOL(xt_check_proc_name);
+
 int xt_check_match(struct xt_mtchk_param *par,
 		   unsigned int size, u_int8_t proto, bool inv_proto)
 {
@@ -525,14 +555,8 @@ int xt_compat_add_offset(u_int8_t af, unsigned int offset, int delta)
 {
 	struct xt_af *xp = &xt[af];
 
-	if (!xp->compat_tab) {
-		if (!xp->number)
-			return -EINVAL;
-		xp->compat_tab = vmalloc(sizeof(struct compat_delta) * xp->number);
-		if (!xp->compat_tab)
-			return -ENOMEM;
-		xp->cur = 0;
-	}
+	if (WARN_ON(!xp->compat_tab))
+		return -ENOMEM;
 
 	if (xp->cur >= xp->number)
 		return -EINVAL;
@@ -581,6 +605,31 @@ void xt_compat_init_offsets(u_int8_t af, unsigned int number)
 	xt[af].cur = 0;
 }
 EXPORT_SYMBOL(xt_compat_init_offsets);
+
+int __xt_compat_init_offsets(u8 af, unsigned int number)
+{
+	size_t mem;
+
+	if (!number || number > (INT_MAX / sizeof(struct compat_delta)))
+		return -EINVAL;
+
+	if (WARN_ON(xt[af].compat_tab))
+		return -EINVAL;
+
+	mem = sizeof(struct compat_delta) * number;
+	if (mem > XT_MAX_TABLE_SIZE)
+		return -ENOMEM;
+
+	xt[af].compat_tab = vmalloc(mem);
+	if (!xt[af].compat_tab)
+		return -ENOMEM;
+
+	xt[af].number = number;
+	xt[af].cur = 0;
+
+	return 0;
+}
+EXPORT_SYMBOL(__xt_compat_init_offsets);
 
 int xt_compat_match_offset(const struct xt_match *match)
 {
@@ -1696,7 +1745,9 @@ EXPORT_SYMBOL_GPL(xt_proto_fini);
  * to fetch the real percpu counter.
  *
  * To speed up allocation and improve data locality, a 4kb block is
- * allocated.
+ * allocated.  Freeing any counter may free an entire block, so all
+ * counters allocated using the same state must be freed at the same
+ * time.
  *
  * xt_percpu_counter_alloc_state contains the base address of the
  * allocated page and the current sub-offset.

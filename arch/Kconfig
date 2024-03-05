@@ -15,6 +15,9 @@ config HAVE_IMA_KEXEC
 config HOTPLUG_SMT
 	bool
 
+config SMT_NUM_THREADS_DYNAMIC
+	bool
+
 config OPROFILE
 	tristate "OProfile system profiling"
 	depends on PROFILING
@@ -93,7 +96,7 @@ config STATIC_KEYS_SELFTEST
 config OPTPROBES
 	def_bool y
 	depends on KPROBES && HAVE_OPTPROBES
-	depends on !PREEMPT
+	select TASKS_RCU if PREEMPT
 
 config KPROBES_ON_FTRACE
 	def_bool y

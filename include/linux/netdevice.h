@@ -1946,7 +1946,7 @@ struct net_device {
 	struct netdev_queue	*_tx ____cacheline_aligned_in_smp;
 	unsigned int		num_tx_queues;
 	unsigned int		real_num_tx_queues;
-	struct Qdisc		*qdisc;
+	struct Qdisc __rcu	*qdisc;
 #ifdef CONFIG_NET_SCHED
 	DECLARE_HASHTABLE	(qdisc_hash, 4);
 #endif
@@ -3705,8 +3705,8 @@ unsigned long dev_trans_start(struct net_device *dev);
 void __netdev_watchdog_up(struct net_device *dev);
 
 void netif_carrier_on(struct net_device *dev);
-
 void netif_carrier_off(struct net_device *dev);
+void netif_carrier_event(struct net_device *dev);
 
 /**
  *	netif_dormant_on - mark device as dormant.
@@ -3823,7 +3823,7 @@ static inline u32 netif_msg_init(int debug_value, int default_msg_enable_bits)
 	if (debug_value == 0)	/* no output */
 		return 0;
 	/* set low N bits */
-	return (1 << debug_value) - 1;
+	return (1U << debug_value) - 1;
 }
 
 static inline void __netif_tx_lock(struct netdev_queue *txq, int cpu)

@@ -139,6 +139,9 @@ struct cpuinfo_x86 {
 	 */
 	u8			x86_cache_bits;
 	unsigned		initialized : 1;
+#ifndef __GENKSYMS__
+	__u32 x86_ext_capability[NEXTCAPINTS+NEXTBUGINTS];
+#endif
 };
 
 struct cpuid_regs {
@@ -172,7 +175,7 @@ extern struct cpuinfo_x86	new_cpu_data;
 
 extern struct x86_hw_tss	doublefault_tss;
 extern __u32			cpu_caps_cleared[NCAPINTS + NBUGINTS];
-extern __u32			cpu_caps_set[NCAPINTS + NBUGINTS];
+extern __u32			cpu_caps_set[NCAPINTS + NBUGINTS + NEXTCAPINTS + NEXTBUGINTS];
 
 #ifdef CONFIG_SMP
 DECLARE_PER_CPU_READ_MOSTLY(struct cpuinfo_x86, cpu_info);
@@ -945,6 +948,15 @@ static inline int mpx_disable_management(void)
 extern u16 amd_get_nb_id(int cpu);
 extern u32 amd_get_nodes_per_socket(void);
 
+#ifdef CONFIG_CPU_SUP_AMD
+extern void amd_clear_divider(void);
+extern void amd_check_microcode(void);
+#else
+static inline void amd_clear_divider(void)		{ }
+static inline void amd_check_microcode(void)		{ }
+#endif
+
+
 static inline uint32_t hypervisor_cpuid_base(const char *sig, uint32_t leaves)
 {
 	uint32_t base, eax, signature[3];
@@ -970,7 +982,7 @@ bool xen_set_default_idle(void);
 #define xen_set_default_idle 0
 #endif
 
-void stop_this_cpu(void *dummy);
+void __noreturn stop_this_cpu(void *dummy);
 void df_debug(struct pt_regs *regs, long error_code);
 void microcode_check(void);
 
@@ -997,5 +1009,7 @@ enum taa_mitigations {
 	TAA_MITIGATION_VERW,
 	TAA_MITIGATION_TSX_DISABLED,
 };
+
+extern bool gds_ucode_mitigated(void);
 
 #endif /* _ASM_X86_PROCESSOR_H */

@@ -4701,7 +4701,7 @@ xfs_bmap_del_extent_delay(
 	ASSERT(got_endoff >= del_endoff);
 
 	if (isrt) {
-		uint64_t rtexts = XFS_FSB_TO_B(mp, del->br_blockcount);
+		uint64_t	rtexts = del->br_blockcount;
 
 		do_div(rtexts, mp->m_sb.sb_rextsize);
 		xfs_mod_frextents(mp, rtexts);
@@ -5673,7 +5673,8 @@ xfs_bmap_collapse_extents(
 		*done = true;
 		goto del_cursor;
 	}
-	XFS_WANT_CORRUPTED_RETURN(mp, !isnullstartblock(got.br_startblock));
+	XFS_WANT_CORRUPTED_GOTO(mp, !isnullstartblock(got.br_startblock),
+				del_cursor);
 
 	new_startoff = got.br_startoff - offset_shift_fsb;
 	if (xfs_iext_peek_prev_extent(ifp, &icur, &prev)) {
@@ -5778,7 +5779,8 @@ xfs_bmap_insert_extents(
 			goto del_cursor;
 		}
 	}
-	XFS_WANT_CORRUPTED_RETURN(mp, !isnullstartblock(got.br_startblock));
+	XFS_WANT_CORRUPTED_GOTO(mp, !isnullstartblock(got.br_startblock),
+				del_cursor);
 
 	if (stop_fsb >= got.br_startoff + got.br_blockcount) {
 		error = -EIO;
