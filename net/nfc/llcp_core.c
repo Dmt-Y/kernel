@@ -1651,7 +1651,9 @@ int nfc_llcp_register_device(struct nfc_dev *ndev)
 	local->sdreq_timer.function = nfc_llcp_sdreq_timer;
 	INIT_WORK(&local->sdreq_timeout_work, nfc_llcp_sdreq_timeout_work);
 
+	spin_lock(&llcp_devices_lock);
 	list_add(&local->list, &llcp_devices);
+	spin_unlock(&llcp_devices_lock);
 
 	return 0;
 }
