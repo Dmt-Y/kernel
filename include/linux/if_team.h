@@ -210,6 +210,9 @@ struct team {
 		struct delayed_work dw;
 	} mcast_rejoin;
 	long mode_priv[TEAM_MODE_PRIV_LONGS];
+#ifndef __GENKSYMS__
+	const struct header_ops *header_ops_cache;
+#endif
 };
 
 static inline int team_dev_queue_xmit(struct team *team, struct team_port *port,
