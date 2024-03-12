@@ -39,7 +39,7 @@ enum cpuid_leafs
 
 #define CPUID_IDX(x) \
 	__builtin_choose_expr((x) > CPUID_MAX, (x) - CPUID_MAX - 1, (x))
-#define IS_EXT_CPUID_BIT(bit) ((bit>>5) > NCAPINTS)
+#define IS_EXT_CPUID_BIT(bit) ((bit>>5) >= NCAPINTS)
 
 /*
  * This macro must be called with bit belonging to one of the extended bug bits,
@@ -146,7 +146,14 @@ extern const char * const x86_bug_flags[(NBUGINTS+NEXTBUGINTS)*32];
 
 #define boot_cpu_has(bit)	cpu_has(&boot_cpu_data, bit)
 
-#define set_cpu_cap(c, bit)	set_bit(bit, (unsigned long *)((c)->x86_capability))
+#define set_cpu_cap(c, bit) do { \
+	if (IS_EXT_CPUID_BIT(bit)) {					      \
+		set_bit(bit - (NCAPINTS*32),                                  \
+			(unsigned long *)(c)->x86_ext_capability);	      \
+	} else {							      \
+		set_bit(bit, (unsigned long *)((c)->x86_capability));	      \
+	}								      \
+} while (0)
 
 extern void setup_clear_cpu_cap(unsigned int bit);
 extern void clear_cpu_cap(struct cpuinfo_x86 *c, unsigned int bit);
