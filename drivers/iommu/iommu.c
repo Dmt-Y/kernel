@@ -706,6 +706,9 @@ void iommu_group_remove_device(struct device *dev)
 	struct iommu_group *group = dev->iommu_group;
 	struct group_device *tmp_device, *device = NULL;
 
+	if (!group)
+		return;
+
 	pr_info("Removing device %s from group %d\n", dev_name(dev), group->id);
 
 	/* Pre-notify listeners that a device is being removed. */
