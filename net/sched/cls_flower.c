@@ -1972,6 +1972,7 @@ static struct tcf_proto_ops cls_fl_ops __read_mostly = {
 	.tmplt_dump	= fl_tmplt_dump,
 	.owner		= THIS_MODULE,
 };
+MODULE_ALIAS_NET_CLS("flower");
 
 static int __init cls_fl_init(void)
 {
