@@ -432,6 +432,8 @@
 #define X86_BUG_GDS			X86_BUG(30) /* CPU is affected by Gather Data Sampling */
 
 /* First extended bug word */
-#define X86_BUG_DIV0                   X86_BUG(1*32 + 0) /* AMD DIV0 speculation bug */
+#define X86_BUG_DIV0                    X86_BUG(1*32 + 0) /* AMD DIV0 speculation bug */
+#define X86_BUG_RFDS			X86_BUG(1*32 + 1) /* CPU is vulnerable to Register File Data Sampling */
+
 
 #endif /* _ASM_X86_CPUFEATURES_H */
