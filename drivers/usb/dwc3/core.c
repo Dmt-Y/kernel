@@ -113,28 +113,32 @@ static void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode)
 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 }
 
+static int dwc3_core_soft_reset(struct dwc3 *dwc);
+
 static void __dwc3_set_mode(struct work_struct *work)
 {
 	struct dwc3 *dwc = work_to_dwc(work);
 	unsigned long flags;
 	int ret;
+	u32 reg;
 	u32 desired_dr_role;
+
+	mutex_lock(&dwc->mutex);
 
 	spin_lock_irqsave(&dwc->lock, flags);
 	desired_dr_role = dwc->desired_dr_role;
 	spin_unlock_irqrestore(&dwc->lock, flags);
-
 	if (!desired_dr_role)
-		return;
+		goto out;
 
 	if (desired_dr_role == dwc->current_dr_role)
-		return;
+		goto out;
 
 	if (dwc->dr_mode != USB_DR_MODE_OTG)
-		return;
+		goto out;
 
 	if (desired_dr_role == DWC3_GCTL_PRTCAP_OTG)
-		return;
+		goto out;
 
 	switch (dwc->current_dr_role) {
 	case DWC3_GCTL_PRTCAP_HOST:
@@ -146,6 +150,25 @@ static void __dwc3_set_mode(struct work_struct *work)
 		break;
 	default:
 		break;
+	}
+
+	/* For DRD host or device mode only */
+	if (dwc->desired_dr_role != DWC3_GCTL_PRTCAP_OTG) {
+		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+		reg |= DWC3_GCTL_CORESOFTRESET;
+		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+
+		/*
+		 * Wait for internal clocks to synchronized. DWC_usb31 and
+		 * DWC_usb32 may need at least 50ms (less for DWC_usb3). To
+		 * keep it consistent across different IPs, let's wait up to
+		 * 100ms before clearing GCTL.CORESOFTRESET.
+		 */
+		msleep(100);
+
+		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+		reg &= ~DWC3_GCTL_CORESOFTRESET;
+		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 	}
 
 	spin_lock_irqsave(&dwc->lock, flags);
@@ -163,6 +186,8 @@ static void __dwc3_set_mode(struct work_struct *work)
 			dev_err(dwc->dev, "failed to initialize host\n");
 		break;
 	case DWC3_GCTL_PRTCAP_DEVICE:
+		dwc3_core_soft_reset(dwc);
+
 		dwc3_event_buffers_setup(dwc);
 		ret = dwc3_gadget_init(dwc);
 		if (ret)
@@ -171,6 +196,8 @@ static void __dwc3_set_mode(struct work_struct *work)
 	default:
 		break;
 	}
+out:
+	mutex_unlock(&dwc->mutex);
 }
 
 void dwc3_set_mode(struct dwc3 *dwc, u32 mode)
@@ -1243,6 +1270,7 @@ static int dwc3_probe(struct platform_device *pdev)
 	dwc3_cache_hwparams(dwc);
 
 	spin_lock_init(&dwc->lock);
+	mutex_init(&dwc->mutex);
 
 	pm_runtime_get_noresume(dev);
 	pm_runtime_set_active(dev);
