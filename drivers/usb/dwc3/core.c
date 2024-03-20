@@ -49,6 +49,7 @@
 
 #define DWC3_DEFAULT_AUTOSUSPEND_DELAY	5000 /* ms */
 
+static DEFINE_MUTEX(suse_roleswitch_mutex);
 /**
  * dwc3_get_dr_mode - Validates and sets dr_mode
  * @dwc: pointer to our context structure
@@ -123,7 +124,7 @@ static void __dwc3_set_mode(struct work_struct *work)
 	u32 reg;
 	u32 desired_dr_role;
 
-	mutex_lock(&dwc->mutex);
+	mutex_lock(&suse_roleswitch_mutex);
 
 	spin_lock_irqsave(&dwc->lock, flags);
 	desired_dr_role = dwc->desired_dr_role;
@@ -197,7 +198,7 @@ static void __dwc3_set_mode(struct work_struct *work)
 		break;
 	}
 out:
-	mutex_unlock(&dwc->mutex);
+	mutex_unlock(&suse_roleswitch_mutex);
 }
 
 void dwc3_set_mode(struct dwc3 *dwc, u32 mode)
@@ -1270,7 +1271,6 @@ static int dwc3_probe(struct platform_device *pdev)
 	dwc3_cache_hwparams(dwc);
 
 	spin_lock_init(&dwc->lock);
-	mutex_init(&dwc->mutex);
 
 	pm_runtime_get_noresume(dev);
 	pm_runtime_set_active(dev);
