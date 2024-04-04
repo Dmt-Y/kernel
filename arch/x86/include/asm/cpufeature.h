@@ -35,6 +35,7 @@ enum cpuid_leafs
 	 * kABI
 	 */
 	CPUID_8000_0021_EAX,
+	CPUID_LNX_5,
 };
 
 #define CPUID_IDX(x) \
