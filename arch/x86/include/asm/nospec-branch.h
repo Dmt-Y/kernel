@@ -216,7 +216,26 @@
 .Lskip_verw_\@:
 .endm
 
+#ifdef CONFIG_X86_64
+.macro CLEAR_BRANCH_HISTORY
+	ALTERNATIVE "jmp .Lskip_bhb_loop_\@", "", X86_FEATURE_CLEAR_BHB_LOOP
+	call clear_bhb_loop
+.Lskip_bhb_loop_\@:
+.endm
+#else
+#define CLEAR_BRANCH_HISTORY
+#endif
+
 #else /* __ASSEMBLY__ */
+
+#ifdef CONFIG_X86_64
+#define CLEAR_BRANCH_HISTORY \
+	ALTERNATIVE("jmp 1f\t\n", "", X86_FEATURE_CLEAR_BHB_LOOP) \
+	"call clear_bhb_loop\t\n" \
+	"1:\t\n"
+#else
+#define CLEAR_BRANCH_HISTORY
+#endif
 
 #define CLEAR_CPU_BUFFERS \
         ALTERNATIVE("jmp 1f\t\n", "", X86_FEATURE_CLEAR_CPU_BUF) \
@@ -255,6 +274,10 @@ extern void entry_untrain_ret(void);
 extern void srso_untrain_ret(void);
 extern void srso_alias_untrain_ret(void);
 extern void entry_ibpb(void);
+
+#ifdef CONFIG_X86_64
+extern void clear_bhb_loop(void);
+#endif
 
 /*
  * Inline asm uses the %V modifier which is only in newer GCC
