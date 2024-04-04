@@ -222,6 +222,7 @@
 	call clear_bhb_loop
 .Lskip_bhb_loop_\@:
 .endm
+
 #else
 #define CLEAR_BRANCH_HISTORY
 #endif
@@ -229,12 +230,12 @@
 #else /* __ASSEMBLY__ */
 
 #ifdef CONFIG_X86_64
-#define CLEAR_BRANCH_HISTORY \
-	ALTERNATIVE("jmp 1f\t\n", "", X86_FEATURE_CLEAR_BHB_LOOP) \
+#define CLEAR_BRANCH_HISTORY_VMEXIT \
+	ALTERNATIVE("jmp 1f\t\n", "", X86_FEATURE_CLEAR_BHB_LOOP_ON_VMEXIT) \
 	"call clear_bhb_loop\t\n" \
 	"1:\t\n"
 #else
-#define CLEAR_BRANCH_HISTORY
+#define CLEAR_BRANCH_HISTORY_VMEXIT
 #endif
 
 #define CLEAR_CPU_BUFFERS \
