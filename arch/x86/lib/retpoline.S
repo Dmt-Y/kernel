@@ -209,7 +209,9 @@ __EXPORT_THUNK(srso_untrain_ret)
 
 
 ENTRY(entry_untrain_ret)
-	ALTERNATIVE_2 "jmp retbleed_untrain_ret", "jmp srso_untrain_ret", X86_FEATURE_SRSO
+	ALTERNATIVE_2 "jmp retbleed_untrain_ret", \
+		      "jmp srso_untrain_ret", X86_FEATURE_SRSO, \
+		      "jmp srso_alias_untrain_ret", X86_FEATURE_SRSO_ALIAS
 ENDPROC(entry_untrain_ret)
 __EXPORT_THUNK(entry_untrain_ret)
 
