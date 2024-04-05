@@ -216,12 +216,17 @@ out_unlock:
 static int ovl_lock_rename_workdir(struct dentry *workdir,
 				   struct dentry *upperdir)
 {
+	struct dentry *trap;
+
 	/* Workdir should not be the same as upperdir */
 	if (workdir == upperdir)
 		goto err;
 
 	/* Workdir should not be subdir of upperdir and vice versa */
-	if (lock_rename(workdir, upperdir) != NULL)
+	trap = lock_rename(workdir, upperdir);
+	if (IS_ERR(trap))
+		goto err;
+	if (trap)
 		goto err_unlock;
 
 	return 0;
@@ -995,6 +1000,10 @@ static int ovl_rename(struct inode *olddir, struct dentry *old,
 	}
 
 	trap = lock_rename(new_upperdir, old_upperdir);
+	if (IS_ERR(trap)) {
+		err = PTR_ERR(trap);
+		goto out_revert_creds;
+	}
 
 	olddentry = lookup_one_len(old->d_name.name, old_upperdir,
 				   old->d_name.len);

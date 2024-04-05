@@ -78,6 +78,7 @@ struct rpc_clnt {
 		struct rpc_xprt_iter	cl_xpi;
 		struct work_struct	cl_work;
 	};
+	struct super_block *pipefs_sb;
 #endif
 };
 
