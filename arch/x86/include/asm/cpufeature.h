@@ -35,6 +35,8 @@ enum cpuid_leafs
 	 * kABI
 	 */
 	CPUID_8000_0021_EAX,
+	CPUID_LNX_5,
+	CPUID_LNX_6,
 };
 
 #define CPUID_IDX(x) \
@@ -252,14 +254,24 @@ static __always_inline __pure bool _static_cpu_has(u16 bit)
 
 #define cpu_has_bug(c, bit) (IS_EXT_BUG_BIT((bit)) ? test_bit((bit) - ((NCAPINTS+NBUGINTS)*32), \
 				(unsigned long *)(&((c)->x86_ext_capability[NEXTCAPINTS]))) : \
-				cpu_has(c, (bit)))
+				test_bit(bit, (unsigned long *)((c)->x86_capability)))
 
-#define set_cpu_bug(c, bit)		set_cpu_cap(c, (bit))
+#define set_cpu_bug(c, bit) do { \
+	if (IS_EXT_BUG_BIT(bit)) {					      \
+		set_bit(bit - ((NCAPINTS+NBUGINTS)*32),                                 \
+			(unsigned long *)&(c)->x86_ext_capability[NEXTCAPINTS]); \
+		set_bit(bit - (NCAPINTS*32),                                  \
+			(unsigned long *)(c)->x86_ext_capability);	      \
+	} else {							      \
+		set_bit(bit, (unsigned long *)((c)->x86_capability));	      \
+	}								      \
+} while (0)
+
 #define clear_cpu_bug(c, bit)		clear_cpu_cap(c, (bit))
 
 #define static_cpu_has_bug(bit)		static_cpu_has((bit))
 #define boot_cpu_has_bug(bit)		cpu_has_bug(&boot_cpu_data, (bit))
-#define boot_cpu_set_bug(bit)		set_cpu_cap(&boot_cpu_data, (bit))
+#define boot_cpu_set_bug(bit)		set_cpu_bug(&boot_cpu_data, (bit))
 
 #define MAX_CPU_FEATURES		((NCAPINTS + NEXTCAPINTS) * 32)
 #define cpu_have_feature		boot_cpu_has
