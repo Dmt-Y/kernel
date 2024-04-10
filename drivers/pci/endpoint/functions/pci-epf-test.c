@@ -340,7 +340,6 @@ static void pci_epf_test_unbind(struct pci_epf *epf)
 	int bar;
 
 	cancel_delayed_work(&epf_test->cmd_handler);
-	pci_epc_stop(epc);
 	for (bar = BAR_0; bar <= BAR_5; bar++) {
 		if (epf_test->reg[bar]) {
 			pci_epf_free_space(epf, epf_test->reg[bar], bar);
