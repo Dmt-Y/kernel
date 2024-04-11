@@ -1164,6 +1164,8 @@ static int qcom_pcie_init_2_3_3(struct qcom_pcie *pcie)
 	writel(PCIE_CAP_CPL_TIMEOUT_DISABLE, pci->dbi_base +
 		PCIE20_DEVICE_CONTROL2_STATUS2);
 
+	dw_pcie_dbi_ro_wr_dis(pci);
+
 	return 0;
 
 err_clk_aux:
