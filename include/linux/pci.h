@@ -465,6 +465,9 @@ struct pci_dev {
 #ifndef __GENKSYMS__
 	unsigned int	no_command_memory:1;	/* No PCI_COMMAND_MEMORY */
 #endif
+#ifndef __GENKSYMS__
+	spinlock_t	pcie_cap_lock;		/* Protects RMW ops in capability accessors */
+#endif
 };
 
 static inline struct pci_dev *pci_physfn(struct pci_dev *dev)
@@ -1051,6 +1054,10 @@ int pcie_capability_write_word(struct pci_dev *dev, int pos, u16 val);
 int pcie_capability_write_dword(struct pci_dev *dev, int pos, u32 val);
 int pcie_capability_clear_and_set_word(struct pci_dev *dev, int pos,
 				       u16 clear, u16 set);
+int pcie_capability_clear_and_set_word_unlocked(struct pci_dev *dev, int pos,
+						u16 clear, u16 set);
+int pcie_capability_clear_and_set_word_locked(struct pci_dev *dev, int pos,
+					      u16 clear, u16 set);
 int pcie_capability_clear_and_set_dword(struct pci_dev *dev, int pos,
 					u32 clear, u32 set);
 
