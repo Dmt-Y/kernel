@@ -461,6 +461,9 @@ extern int nfs_instantiate(struct dentry *dentry, struct nfs_fh *fh,
 			struct nfs_fattr *fattr, struct nfs4_label *label);
 extern int nfs_may_open(struct inode *inode, struct rpc_cred *cred, int openflags);
 extern void nfs_access_zap_cache(struct inode *inode);
+extern int nfs_atomic_open_v23(struct inode *dir, struct dentry *dentry,
+			       struct file *file, unsigned int open_flags,
+			       umode_t mode, int *opened);
 
 /*
  * linux/fs/nfs/symlink.c

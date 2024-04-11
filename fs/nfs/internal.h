@@ -559,6 +559,14 @@ nfs_write_verifier_cmp(const struct nfs_write_verifier *v1,
 	return memcmp(v1->data, v2->data, sizeof(v1->data));
 }
 
+static inline bool
+nfs_write_match_verf(const struct nfs_writeverf *verf,
+		struct nfs_page *req)
+{
+	return verf->committed > NFS_UNSTABLE &&
+		!nfs_write_verifier_cmp(&req->wb_verf, &verf->verifier);
+}
+
 /* unlink.c */
 extern struct rpc_task *
 nfs_async_rename(struct inode *old_dir, struct inode *new_dir,
@@ -570,6 +578,7 @@ extern int nfs_sillyrename(struct inode *dir, struct dentry *dentry);
 void nfs_init_cinfo_from_dreq(struct nfs_commit_info *cinfo,
 			      struct nfs_direct_req *dreq);
 extern ssize_t nfs_dreq_bytes_left(struct nfs_direct_req *dreq);
+extern ssize_t nfs_dreq_bytes_left_offset(struct nfs_direct_req *dreq, loff_t offset);
 
 /* nfs4proc.c */
 extern struct nfs_client *nfs4_init_client(struct nfs_client *clp,

@@ -452,6 +452,7 @@ static int ovl_copy_up_one(struct dentry *parent, struct dentry *dentry,
 	struct path parentpath;
 	struct dentry *lowerdentry = lowerpath->dentry;
 	struct dentry *upperdir;
+	struct dentry *trap;
 	const char *link = NULL;
 	struct ovl_fs *ofs = dentry->d_sb->s_fs_info;
 
@@ -499,7 +500,12 @@ static int ovl_copy_up_one(struct dentry *parent, struct dentry *dentry,
 	}
 
 	err = -EIO;
-	if (lock_rename(workdir, upperdir) != NULL) {
+	trap = lock_rename(workdir, upperdir);
+	if (IS_ERR(trap)) {
+		pr_err("overlayfs: failed to lock workdir+upperdir\n");
+		goto out_done;
+	}
+	if (trap != NULL) {
 		pr_err("overlayfs: failed to lock workdir+upperdir\n");
 		goto out_unlock;
 	}
