@@ -239,11 +239,12 @@ static __always_inline __pure bool _static_cpu_has(u16 bit)
 }
 
 #define static_cpu_has(bit)					\
-(								\
-	__builtin_constant_p(boot_cpu_has(bit)) ?		\
+({								\
+	BUILD_BUG_ON_MSG((bit >> 5) >= NCAPINTS+NBUGINTS, "extended bits/bugs not supported"); \
+	(__builtin_constant_p(boot_cpu_has(bit)) ?		\
 		boot_cpu_has(bit) :				\
-		_static_cpu_has(bit)				\
-)
+		_static_cpu_has(bit));				\
+})
 #else
 /*
  * Fall back to dynamic for gcc versions which don't support asm goto. Should be
@@ -259,9 +260,7 @@ static __always_inline __pure bool _static_cpu_has(u16 bit)
 #define set_cpu_bug(c, bit) do { \
 	if (IS_EXT_BUG_BIT(bit)) {					      \
 		set_bit(bit - ((NCAPINTS+NBUGINTS)*32),                                 \
-			(unsigned long *)&(c)->x86_ext_capability[NEXTCAPINTS]); \
-		set_bit(bit - (NCAPINTS*32),                                  \
-			(unsigned long *)(c)->x86_ext_capability);	      \
+			(unsigned long *)(&((c)->x86_ext_capability[NEXTCAPINTS]))); \
 	} else {							      \
 		set_bit(bit, (unsigned long *)((c)->x86_capability));	      \
 	}								      \

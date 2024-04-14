@@ -386,7 +386,8 @@ void __init_or_module noinline apply_alternatives(struct alt_instr *start,
 		replacement = (u8 *)&a->repl_offset + a->repl_offset;
 		BUG_ON(a->instrlen > sizeof(insnbuf));
 		BUG_ON(a->cpuid >= (NCAPINTS + NBUGINTS + NEXTCAPINTS + NEXTBUGINTS) * 32);
-		if (!boot_cpu_has(a->cpuid)) {
+		if ((a->cpuid < NCAPINTS && !boot_cpu_has(a->cpuid)) ||
+		    (a->cpuid > NCAPINTS && !boot_cpu_has_bug(a->cpuid))) {
 			if (a->padlen > 1)
 				optimize_nops(a, instr);
 

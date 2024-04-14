@@ -1714,7 +1714,7 @@ static void __init spectre_v2_select_mitigation(void)
 	    mode == SPECTRE_V2_RETPOLINE)
 		spec_ctrl_disable_kernel_rrsba();
 
-	if (boot_cpu_has(X86_BUG_BHI))
+	if (boot_cpu_has_bug(X86_BUG_BHI))
 		bhi_select_mitigation();
 
 	spectre_v2_enabled = mode;
