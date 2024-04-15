@@ -676,7 +676,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 		 * loop if said highest leaf has no subleaves indexed by ECX.
 		 */
 		if (entry->eax >= 0x8000001d &&
-		    (static_cpu_has(X86_FEATURE_LFENCE_RDTSC)
+		    (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC)
 		     || !static_cpu_has_bug(X86_BUG_NULL_SEG)))
 			entry->eax = max(entry->eax, 0x80000021);
 		break;
@@ -769,7 +769,7 @@ static inline int __do_cpuid_ent(struct kvm_cpuid_entry2 *entry, u32 function,
 		 * the mask with the raw host CPUID, and reporting support in AMD's
 		 * leaf can make it easier for userspace to detect the feature.
 		 */
-		if (cpu_feature_enabled(X86_FEATURE_LFENCE_RDTSC))
+		if (boot_cpu_has(X86_FEATURE_LFENCE_RDTSC))
 			entry->eax |= F(LFENCE_RDTSC);
 		if (!static_cpu_has_bug(X86_BUG_NULL_SEG))
 			entry->eax |= BIT(6);
