@@ -86,9 +86,6 @@
 
 #define PCIE20_PARF_Q2A_FLUSH			0x1AC
 
-#define PCIE20_MISC_CONTROL_1_REG		0x8BC
-#define DBI_RO_WR_EN				1
-
 #define PERST_DELAY_US				1000
 /* PARF registers */
 #define PCIE20_PARF_PCS_DEEMPH			0x34
@@ -1154,7 +1151,9 @@ static int qcom_pcie_init_2_3_3(struct qcom_pcie *pcie)
 	writel(0, pcie->parf + PCIE20_PARF_Q2A_FLUSH);
 
 	writel(CMD_BME_VAL, pci->dbi_base + PCIE20_COMMAND_STATUS);
-	writel(DBI_RO_WR_EN, pci->dbi_base + PCIE20_MISC_CONTROL_1_REG);
+
+	dw_pcie_dbi_ro_wr_en(pci);
+
 	writel(PCIE_CAP_LINK1_VAL, pci->dbi_base + PCIE20_CAP_LINK_1);
 
 	val = readl(pci->dbi_base + PCIE20_CAP_LINK_CAPABILITIES);
@@ -1163,6 +1162,8 @@ static int qcom_pcie_init_2_3_3(struct qcom_pcie *pcie)
 
 	writel(PCIE_CAP_CPL_TIMEOUT_DISABLE, pci->dbi_base +
 		PCIE20_DEVICE_CONTROL2_STATUS2);
+
+	dw_pcie_dbi_ro_wr_dis(pci);
 
 	return 0;
 
@@ -1404,11 +1405,13 @@ static int qcom_pcie_probe(struct platform_device *pdev)
 	ret = dw_pcie_host_init(pp);
 	if (ret) {
 		dev_err(dev, "cannot initialize host\n");
-		goto err_pm_runtime_put;
+		goto err_phy_exit;
 	}
 
 	return 0;
 
+err_phy_exit:
+	phy_exit(pcie->phy);
 err_pm_runtime_put:
 	pm_runtime_put(dev);
 	pm_runtime_disable(dev);

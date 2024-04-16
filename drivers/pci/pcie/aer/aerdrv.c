@@ -45,6 +45,11 @@ static struct pcie_port_service_driver aerdriver = {
 	.reset_link	= aer_root_reset,
 };
 
+#define AER_ERR_STATUS_MASK		(PCI_ERR_ROOT_UNCOR_RCV |	\
+					PCI_ERR_ROOT_COR_RCV |		\
+					PCI_ERR_ROOT_MULTI_COR_RCV |	\
+					PCI_ERR_ROOT_MULTI_UNCOR_RCV)
+
 static int pcie_aer_disable;
 
 void pci_no_aer(void)
@@ -188,7 +193,7 @@ irqreturn_t aer_irq(int irq, void *context)
 
 	/* Read error status */
 	pci_read_config_dword(pdev->port, pos + PCI_ERR_ROOT_STATUS, &status);
-	if (!(status & (PCI_ERR_ROOT_UNCOR_RCV|PCI_ERR_ROOT_COR_RCV))) {
+	if (!(status & AER_ERR_STATUS_MASK)) {
 		spin_unlock_irqrestore(&rpc->e_lock, flags);
 		return IRQ_NONE;
 	}
