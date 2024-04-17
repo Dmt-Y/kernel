@@ -312,17 +312,11 @@ int pciehp_check_link_status(struct controller *ctrl)
 static int __pciehp_link_set(struct controller *ctrl, bool enable)
 {
 	struct pci_dev *pdev = ctrl_dev(ctrl);
-	u16 lnk_ctrl;
 
-	pcie_capability_read_word(pdev, PCI_EXP_LNKCTL, &lnk_ctrl);
+	pcie_capability_clear_and_set_word(pdev, PCI_EXP_LNKCTL,
+					   PCI_EXP_LNKCTL_LD,
+					   enable ? 0 : PCI_EXP_LNKCTL_LD);
 
-	if (enable)
-		lnk_ctrl &= ~PCI_EXP_LNKCTL_LD;
-	else
-		lnk_ctrl |= PCI_EXP_LNKCTL_LD;
-
-	pcie_capability_write_word(pdev, PCI_EXP_LNKCTL, lnk_ctrl);
-	ctrl_dbg(ctrl, "%s: lnk_ctrl = %x\n", __func__, lnk_ctrl);
 	return 0;
 }
 
@@ -475,6 +469,42 @@ void pciehp_set_attention_status(struct controller *ctrl, u8 value)
 	pcie_write_cmd_nowait(ctrl, slot_cmd, PCI_EXP_SLTCTL_AIC);
 	ctrl_dbg(ctrl, "%s: SLOTCTRL %x write cmd %x\n", __func__,
 		 pci_pcie_cap(ctrl->pcie->port) + PCI_EXP_SLTCTL, slot_cmd);
+}
+
+/**
+ * pciehp_set_indicators() - set attention indicator, power indicator, or both
+ * @ctrl: PCIe hotplug controller
+ * @pwr: one of:
+ *	PCI_EXP_SLTCTL_PWR_IND_ON
+ *	PCI_EXP_SLTCTL_PWR_IND_BLINK
+ *	PCI_EXP_SLTCTL_PWR_IND_OFF
+ * @attn: one of:
+ *	PCI_EXP_SLTCTL_ATTN_IND_ON
+ *	PCI_EXP_SLTCTL_ATTN_IND_BLINK
+ *	PCI_EXP_SLTCTL_ATTN_IND_OFF
+ *
+ * Either @pwr or @attn can also be INDICATOR_NOOP to leave that indicator
+ * unchanged.
+ */
+void pciehp_set_indicators(struct controller *ctrl, int pwr, int attn)
+{
+	u16 cmd = 0, mask = 0;
+
+	if (PWR_LED(ctrl) && pwr != INDICATOR_NOOP) {
+		cmd |= (pwr & PCI_EXP_SLTCTL_PIC);
+		mask |= PCI_EXP_SLTCTL_PIC;
+	}
+
+	if (ATTN_LED(ctrl) && attn != INDICATOR_NOOP) {
+		cmd |= (attn & PCI_EXP_SLTCTL_AIC);
+		mask |= PCI_EXP_SLTCTL_AIC;
+	}
+
+	if (cmd) {
+		pcie_write_cmd_nowait(ctrl, cmd, mask);
+		ctrl_dbg(ctrl, "%s: SLOTCTRL %x write cmd %x\n", __func__,
+			 pci_pcie_cap(ctrl->pcie->port) + PCI_EXP_SLTCTL, cmd);
+	}
 }
 
 void pciehp_green_led_on(struct controller *ctrl)
