@@ -491,10 +491,12 @@ static bool sc16is7xx_regmap_precious(struct device *dev, unsigned int reg)
 	return false;
 }
 
+#ifdef NOT_SUPPORTED_KABI
 static bool sc16is7xx_regmap_noinc(struct device *dev, unsigned int reg)
 {
 	return reg == SC16IS7XX_RHR_REG;
 }
+#endif
 
 static int sc16is7xx_set_baud(struct uart_port *port, int baud)
 {
@@ -1374,8 +1376,10 @@ static struct regmap_config regcfg = {
 	.cache_type = REGCACHE_RBTREE,
 	.volatile_reg = sc16is7xx_regmap_volatile,
 	.precious_reg = sc16is7xx_regmap_precious,
+#ifdef NOT_SUPPORTED_KABI
 	.writeable_noinc_reg = sc16is7xx_regmap_noinc,
 	.readable_noinc_reg = sc16is7xx_regmap_noinc,
+#endif
 };
 
 #ifdef CONFIG_SERIAL_SC16IS7XX_SPI

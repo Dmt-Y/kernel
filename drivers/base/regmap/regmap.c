@@ -169,22 +169,26 @@ bool regmap_precious(struct regmap *map, unsigned int reg)
 
 bool regmap_writeable_noinc(struct regmap *map, unsigned int reg)
 {
+#ifdef NOT_SUPPORTED_KABI
 	if (map->writeable_noinc_reg)
 		return map->writeable_noinc_reg(map->dev, reg);
 
 	if (map->wr_noinc_table)
 		return regmap_check_range_table(map, reg, map->wr_noinc_table);
+#endif
 
 	return true;
 }
 
 bool regmap_readable_noinc(struct regmap *map, unsigned int reg)
 {
+#ifdef NOT_SUPPORTED_KABI
 	if (map->readable_noinc_reg)
 		return map->readable_noinc_reg(map->dev, reg);
 
 	if (map->rd_noinc_table)
 		return regmap_check_range_table(map, reg, map->rd_noinc_table);
+#endif
 
 	return true;
 }
@@ -705,14 +709,18 @@ struct regmap *__regmap_init(struct device *dev,
 	map->rd_table = config->rd_table;
 	map->volatile_table = config->volatile_table;
 	map->precious_table = config->precious_table;
+#ifdef NOT_SUPPORTED_KABI
 	map->wr_noinc_table = config->wr_noinc_table;
 	map->rd_noinc_table = config->rd_noinc_table;
+#endif
 	map->writeable_reg = config->writeable_reg;
 	map->readable_reg = config->readable_reg;
 	map->volatile_reg = config->volatile_reg;
 	map->precious_reg = config->precious_reg;
+#ifdef NOT_SUPPORTED_KABI
 	map->writeable_noinc_reg = config->writeable_noinc_reg;
 	map->readable_noinc_reg = config->readable_noinc_reg;
+#endif
 	map->cache_type = config->cache_type;
 	map->name = config->name;
 
@@ -1220,8 +1228,10 @@ int regmap_reinit_cache(struct regmap *map, const struct regmap_config *config)
 	map->readable_reg = config->readable_reg;
 	map->volatile_reg = config->volatile_reg;
 	map->precious_reg = config->precious_reg;
+#ifdef NOT_SUPPORTED_KABI
 	map->writeable_noinc_reg = config->writeable_noinc_reg;
 	map->readable_noinc_reg = config->readable_noinc_reg;
+#endif
 	map->cache_type = config->cache_type;
 
 	regmap_debugfs_init(map, config->name);
