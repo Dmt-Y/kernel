@@ -2415,7 +2415,7 @@ int regmap_raw_write_async(struct regmap *map, unsigned int reg,
 EXPORT_SYMBOL_GPL(regmap_raw_write_async);
 
 static int _regmap_raw_read(struct regmap *map, unsigned int reg, void *val,
-			    unsigned int val_len)
+			    unsigned int val_len, bool noinc)
 {
 	struct regmap_range_node *range;
 	int ret;
@@ -2428,7 +2428,7 @@ static int _regmap_raw_read(struct regmap *map, unsigned int reg, void *val,
 	range = _regmap_range_lookup(map, reg);
 	if (range) {
 		ret = _regmap_select_page(map, &reg, range,
-					  val_len / map->format.val_bytes);
+					  noinc ? 1 : val_len / map->format.val_bytes);
 		if (ret != 0)
 			return ret;
 	}
@@ -2464,7 +2464,7 @@ static int _regmap_bus_read(void *context, unsigned int reg,
 	if (!map->format.parse_val)
 		return -EINVAL;
 
-	ret = _regmap_raw_read(map, reg, map->work_buf, map->format.val_bytes);
+	ret = _regmap_raw_read(map, reg, map->work_buf, map->format.val_bytes, false);
 	if (ret == 0)
 		*val = map->format.parse_val(map->work_buf);
 
@@ -2574,7 +2574,7 @@ int regmap_raw_read(struct regmap *map, unsigned int reg, void *val,
 		}
 
 		/* Physical block read if there's no cache involved */
-		ret = _regmap_raw_read(map, reg, val, val_len);
+		ret = _regmap_raw_read(map, reg, val, val_len, false);
 
 	} else {
 		/* Otherwise go word by word for the cache; should be low
@@ -2647,7 +2647,7 @@ int regmap_noinc_read(struct regmap *map, unsigned int reg,
 			read_len = map->max_raw_read;
 		else
 			read_len = val_len;
-		ret = _regmap_raw_read(map, reg, val, read_len);
+		ret = _regmap_raw_read(map, reg, val, read_len, true);
 		if (ret)
 			goto out_unlock;
 		val = ((u8 *)val) + read_len;
