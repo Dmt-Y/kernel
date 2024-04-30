@@ -1385,7 +1385,7 @@ static void regmap_set_work_buf_flag_mask(struct regmap *map, int max_bytes,
 }
 
 int _regmap_raw_write(struct regmap *map, unsigned int reg,
-		      const void *val, size_t val_len)
+		      const void *val, size_t val_len, bool noinc)
 {
 	struct regmap_range_node *range;
 	unsigned long flags;
@@ -1437,7 +1437,7 @@ int _regmap_raw_write(struct regmap *map, unsigned int reg,
 			dev_dbg(map->dev, "Writing window %d/%zu\n",
 				win_residue, val_len / map->format.val_bytes);
 			ret = _regmap_raw_write(map, reg, val, win_residue *
-						map->format.val_bytes);
+						map->format.val_bytes, noinc);
 			if (ret != 0)
 				return ret;
 
@@ -1451,7 +1451,7 @@ int _regmap_raw_write(struct regmap *map, unsigned int reg,
 			win_residue = range->window_len - win_offset;
 		}
 
-		ret = _regmap_select_page(map, &reg, range, val_num);
+		ret = _regmap_select_page(map, &reg, range, noinc ? 1 : val_num);
 		if (ret != 0)
 			return ret;
 	}
@@ -1659,7 +1659,8 @@ static int _regmap_bus_raw_write(void *context, unsigned int reg,
 				 map->work_buf +
 				 map->format.reg_bytes +
 				 map->format.pad_bytes,
-				 map->format.val_bytes);
+				 map->format.val_bytes,
+				 false);
 }
 
 static inline void *_regmap_map_get_context(struct regmap *map)
@@ -1784,7 +1785,7 @@ int regmap_raw_write(struct regmap *map, unsigned int reg,
 
 	map->lock(map->lock_arg);
 
-	ret = _regmap_raw_write(map, reg, val, val_len);
+	ret = _regmap_raw_write(map, reg, val, val_len, false);
 
 	map->unlock(map->lock_arg);
 
@@ -1842,7 +1843,7 @@ int regmap_noinc_write(struct regmap *map, unsigned int reg,
 			write_len = map->max_raw_write;
 		else
 			write_len = val_len;
-		ret = _regmap_raw_write(map, reg, val, write_len);
+		ret = _regmap_raw_write(map, reg, val, write_len, true);
 		if (ret)
 			goto out_unlock;
 		val = ((u8 *)val) + write_len;
@@ -2040,7 +2041,8 @@ out:
 			ret = _regmap_raw_write(map,
 						reg + (i * chunk_stride),
 						wval + (i * chunk_size),
-						chunk_size);
+						chunk_size,
+						false);
 			if (ret)
 				break;
 		}
@@ -2049,7 +2051,8 @@ out:
 		if (!ret && chunk_size * i < total_size) {
 			ret = _regmap_raw_write(map, reg + (i * chunk_stride),
 						wval + (i * chunk_size),
-						total_size - i * chunk_size);
+						total_size - i * chunk_size,
+						false);
 		}
 		map->unlock(map->lock_arg);
 
@@ -2069,7 +2072,8 @@ out:
 			map->format.parse_inplace(wval + i);
 
 		map->lock(map->lock_arg);
-		ret = _regmap_raw_write(map, reg, wval, val_bytes * val_count);
+		ret = _regmap_raw_write(map, reg, wval, val_bytes * val_count,
+					false);
 		map->unlock(map->lock_arg);
 
 		kfree(wval);
@@ -2404,7 +2408,7 @@ int regmap_raw_write_async(struct regmap *map, unsigned int reg,
 
 	map->async = true;
 
-	ret = _regmap_raw_write(map, reg, val, val_len);
+	ret = _regmap_raw_write(map, reg, val, val_len, false);
 
 	map->async = false;
 
