@@ -392,6 +392,12 @@ int cec_thread_func(void *_adap)
 			goto unlock;
 		}
 
+		if (adap->transmit_in_progress_aborted) {
+			if (adap->transmitting)
+				cec_data_cancel(adap->transmitting);
+			adap->transmit_in_progress_aborted = false;
+			goto unlock;
+		}
 		if (adap->transmitting && timeout) {
 			/*
 			 * If we timeout, then log that. This really shouldn't
