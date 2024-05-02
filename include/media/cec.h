@@ -168,6 +168,7 @@ struct cec_adapter {
 
 	u16 phys_addr;
 	bool needs_hpd;
+	bool is_claiming_log_addrs;
 	bool is_configuring;
 	bool is_configured;
 	u32 monitor_all_cnt;
