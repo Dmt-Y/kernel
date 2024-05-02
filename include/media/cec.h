@@ -168,7 +168,6 @@ struct cec_adapter {
 
 	u16 phys_addr;
 	bool needs_hpd;
-	bool is_claiming_log_addrs;
 	bool is_configuring;
 	bool is_configured;
 	u32 monitor_all_cnt;
@@ -176,7 +175,10 @@ struct cec_adapter {
 	struct cec_fh *cec_follower;
 	struct cec_fh *cec_initiator;
 	bool passthrough;
+#ifndef __GENKSYMS__
 	bool transmit_in_progress_aborted:1;
+	bool is_claiming_log_addrs:1;
+#endif
 	struct cec_log_addrs log_addrs;
 
 #ifdef CONFIG_CEC_NOTIFIER
