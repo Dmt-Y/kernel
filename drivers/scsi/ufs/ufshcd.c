@@ -5896,6 +5896,7 @@ cleanup:
 out:
 	if (!err) {
 		err = SUCCESS;
+		lrbp->cmd = NULL;
 	} else {
 		dev_err(hba->dev, "%s: failed with err %d\n", __func__, err);
 		ufshcd_set_req_abort_skip(hba, hba->outstanding_reqs);
