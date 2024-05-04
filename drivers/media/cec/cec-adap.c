@@ -320,7 +320,7 @@ static void cec_flush(struct cec_adapter *adap)
 		cec_data_cancel(data);
 	}
 	if (adap->transmitting)
-		cec_data_cancel(adap->transmitting);
+		adap->transmit_in_progress_aborted = true;
 
 	/* Cancel the pending timeout work. */
 	list_for_each_entry_safe(data, n, &adap->wait_queue, list) {
@@ -392,6 +392,12 @@ int cec_thread_func(void *_adap)
 			goto unlock;
 		}
 
+		if (adap->transmit_in_progress_aborted) {
+			if (adap->transmitting)
+				cec_data_cancel(adap->transmitting);
+			adap->transmit_in_progress_aborted = false;
+			goto unlock;
+		}
 		if (adap->transmitting && timeout) {
 			/*
 			 * If we timeout, then log that. This really shouldn't
@@ -450,6 +456,7 @@ int cec_thread_func(void *_adap)
 		if (data->attempts == 0)
 			data->attempts = attempts;
 
+		adap->transmit_in_progress_aborted = false;
 		/* Tell the adapter to transmit, cancel on error */
 		if (adap->ops->adap_transmit(adap, data->attempts,
 					     signal_free_time, &data->msg))
@@ -473,6 +480,8 @@ void cec_transmit_done_ts(struct cec_adapter *adap, u8 status,
 {
 	struct cec_data *data;
 	struct cec_msg *msg;
+	bool done = status & (CEC_TX_STATUS_MAX_RETRIES | CEC_TX_STATUS_OK);
+	bool aborted = adap->transmit_in_progress_aborted;
 
 	dprintk(2, "cec_transmit_done %02x\n", status);
 	mutex_lock(&adap->lock);
@@ -486,6 +495,7 @@ void cec_transmit_done_ts(struct cec_adapter *adap, u8 status,
 		dprintk(1, "cec_transmit_done without an ongoing transmit!\n");
 		goto unlock;
 	}
+	adap->transmit_in_progress_aborted = false;
 
 	msg = &data->msg;
 
@@ -506,8 +516,7 @@ void cec_transmit_done_ts(struct cec_adapter *adap, u8 status,
 	 * the hardware didn't signal that it retried itself (by setting
 	 * CEC_TX_STATUS_MAX_RETRIES), then we will retry ourselves.
 	 */
-	if (data->attempts > 1 &&
-	    !(status & (CEC_TX_STATUS_MAX_RETRIES | CEC_TX_STATUS_OK))) {
+	if (!aborted && data->attempts > 1 && !done) {
 		/* Retry this message */
 		data->attempts--;
 		/* Add the message in front of the transmit queue */
@@ -516,6 +525,8 @@ void cec_transmit_done_ts(struct cec_adapter *adap, u8 status,
 		goto wake_thread;
 	}
 
+	// if (aborted && !done)
+	// 	status |= CEC_TX_STATUS_ABORTED;
 	data->attempts = 0;
 
 	/* Always set CEC_TX_STATUS_MAX_RETRIES on error */
@@ -764,6 +775,7 @@ int cec_transmit_msg_fh(struct cec_adapter *adap, struct cec_msg *msg,
 	mutex_unlock(&adap->lock);
 	res = wait_for_completion_killable_timeout(&data->c,
 						   msecs_to_jiffies(timeout));
+	cancel_delayed_work_sync(&data->work);
 	mutex_lock(&adap->lock);
 
 	if (data->completed) {
@@ -1373,8 +1385,11 @@ unconfigure:
  */
 static void cec_claim_log_addrs(struct cec_adapter *adap, bool block)
 {
-	if (WARN_ON(adap->is_configuring || adap->is_configured))
+	if (WARN_ON(adap->is_claiming_log_addrs ||
+		    adap->is_configuring || adap->is_configured))
 		return;
+
+	adap->is_claiming_log_addrs = true;
 
 	init_completion(&adap->config_completion);
 
@@ -1389,6 +1404,7 @@ static void cec_claim_log_addrs(struct cec_adapter *adap, bool block)
 		wait_for_completion(&adap->config_completion);
 		mutex_lock(&adap->lock);
 	}
+	adap->is_claiming_log_addrs = false;
 }
 
 /* Set a new physical address and send an event notifying userspace of this.
@@ -1419,6 +1435,10 @@ void __cec_s_phys_addr(struct cec_adapter *adap, u16 phys_addr, bool block)
 	}
 
 	mutex_lock(&adap->devnode.lock);
+	adap->transmit_in_progress_aborted = false;
+	if (adap->transmitting)
+		cec_data_cancel(adap->transmitting);
+
 	if ((adap->needs_hpd || list_empty(&adap->devnode.fhs)) &&
 	    adap->ops->adap_enable(adap, true)) {
 		mutex_unlock(&adap->devnode.lock);
