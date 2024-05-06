@@ -51,6 +51,10 @@ struct arfs_tuple {
 	__be16 dst_port;
 };
 
+enum {
+	MLX5E_ARFS_STATE_ENABLED,
+};
+
 struct arfs_rule {
 	struct mlx5e_priv	*priv;
 	struct work_struct      arfs_work;
@@ -144,6 +148,8 @@ int mlx5e_arfs_enable(struct mlx5e_priv *priv)
 			return err;
 		}
 	}
+	set_bit(MLX5E_ARFS_STATE_ENABLED, &priv->fs.arfs.state);
+
 	return 0;
 }
 
@@ -406,6 +412,9 @@ static void arfs_del_rules(struct mlx5e_priv *priv)
 	int j;
 
 	HLIST_HEAD(del_list);
+
+	clear_bit(MLX5E_ARFS_STATE_ENABLED, &priv->fs.arfs.state);
+
 	spin_lock_bh(&priv->fs.arfs.arfs_lock);
 	mlx5e_for_each_arfs_rule(rule, htmp, priv->fs.arfs.arfs_tables, i, j) {
 		hlist_del_init(&rule->hlist);
@@ -571,17 +580,8 @@ static void arfs_handle_work(struct work_struct *work)
 	struct mlx5e_priv *priv = arfs_rule->priv;
 	struct mlx5_flow_handle *rule;
 
-	mutex_lock(&priv->state_lock);
-	if (!test_bit(MLX5E_STATE_OPENED, &priv->state)) {
-		spin_lock_bh(&priv->fs.arfs.arfs_lock);
-		hlist_del(&arfs_rule->hlist);
-		spin_unlock_bh(&priv->fs.arfs.arfs_lock);
-
-		mutex_unlock(&priv->state_lock);
-		kfree(arfs_rule);
-		goto out;
-	}
-	mutex_unlock(&priv->state_lock);
+	if (!test_bit(MLX5E_ARFS_STATE_ENABLED, &priv->fs.arfs.state))
+		return;
 
 	if (!arfs_rule->rule) {
 		rule = arfs_add_rule(priv, arfs_rule);
@@ -692,6 +692,11 @@ int mlx5e_rx_flow_steer(struct net_device *dev, const struct sk_buff *skb,
 		return -EPROTONOSUPPORT;
 
 	spin_lock_bh(&arfs->arfs_lock);
+	if (!test_bit(MLX5E_ARFS_STATE_ENABLED, &arfs->state)) {
+		spin_unlock_bh(&arfs->arfs_lock);
+		return -EPERM;
+	}
+
 	arfs_rule = arfs_find_rule(arfs_t, &fk);
 	if (arfs_rule) {
 		if (arfs_rule->rxq == rxq_index) {
