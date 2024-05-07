@@ -251,7 +251,9 @@ struct tls_context {
 			   int __user *optlen);
 	int  (*hash)(struct sock *sk);
 	void (*unhash)(struct sock *sk);
+#ifndef __GENKSYMS__
 	struct sock *sk;
+#endif
 };
 
 struct tls_offload_context_rx {
