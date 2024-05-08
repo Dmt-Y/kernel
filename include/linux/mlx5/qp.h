@@ -244,7 +244,13 @@ struct mlx5_wqe_eth_seg {
 	union {
 		struct {
 			__be16 sz;
-			u8     start[2];
+			union {
+				u8     start[2];
+				struct {
+					struct { } __empty_data;
+					u8     data[];
+				};
+			};
 		} inline_hdr;
 		struct {
 			__be16 type;

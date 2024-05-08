@@ -380,9 +380,8 @@ static void sc16is7xx_fifo_read(struct uart_port *port, unsigned int rxlen)
 	const u8 line = sc16is7xx_line(port);
 	u8 addr = (SC16IS7XX_RHR_REG << SC16IS7XX_REG_SHIFT) | line;
 
-	regcache_cache_bypass(s->regmap, true);
-	regmap_raw_read(s->regmap, addr, s->buf, rxlen);
-	regcache_cache_bypass(s->regmap, false);
+	regmap_noinc_read(s->regmap, addr, s->buf,
+			  min(rxlen, (unsigned)SC16IS7XX_FIFO_SIZE));
 }
 
 static void sc16is7xx_fifo_write(struct uart_port *port, u8 to_send)
@@ -398,9 +397,8 @@ static void sc16is7xx_fifo_write(struct uart_port *port, u8 to_send)
 	if (unlikely(!to_send))
 		return;
 
-	regcache_cache_bypass(s->regmap, true);
-	regmap_raw_write(s->regmap, addr, s->buf, to_send);
-	regcache_cache_bypass(s->regmap, false);
+	regmap_noinc_write(s->regmap, addr, s->buf,
+			   min(to_send, (u8)SC16IS7XX_FIFO_SIZE));
 }
 
 static void sc16is7xx_port_update(struct uart_port *port, u8 reg,
@@ -492,6 +490,13 @@ static bool sc16is7xx_regmap_precious(struct device *dev, unsigned int reg)
 
 	return false;
 }
+
+#ifdef NOT_SUPPORTED_KABI
+static bool sc16is7xx_regmap_noinc(struct device *dev, unsigned int reg)
+{
+	return reg == SC16IS7XX_RHR_REG;
+}
+#endif
 
 static int sc16is7xx_set_baud(struct uart_port *port, int baud)
 {
@@ -1371,6 +1376,10 @@ static struct regmap_config regcfg = {
 	.cache_type = REGCACHE_RBTREE,
 	.volatile_reg = sc16is7xx_regmap_volatile,
 	.precious_reg = sc16is7xx_regmap_precious,
+#ifdef NOT_SUPPORTED_KABI
+	.writeable_noinc_reg = sc16is7xx_regmap_noinc,
+	.readable_noinc_reg = sc16is7xx_regmap_noinc,
+#endif
 };
 
 #ifdef CONFIG_SERIAL_SC16IS7XX_SPI

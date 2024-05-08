@@ -861,8 +861,7 @@ static void dsa_cpu_port_get_strings(struct net_device *dev,
 	struct dsa_switch *ds = dst->cpu_switch;
 	s8 cpu_port = dst->cpu_port;
 	int len = ETH_GSTRING_LEN;
-	int mcount = 0, count;
-	unsigned int i;
+	int mcount = 0, count, i;
 	uint8_t pfx[4];
 	uint8_t *ndata;
 
@@ -884,6 +883,8 @@ static void dsa_cpu_port_get_strings(struct net_device *dev,
 		 */
 		ds->ops->get_strings(ds, cpu_port, ndata);
 		count = ds->ops->get_sset_count(ds);
+		if (count < 0)
+			return;
 		for (i = 0; i < count; i++) {
 			memmove(ndata + (i * len + sizeof(pfx)),
 				ndata + i * len, len - sizeof(pfx));

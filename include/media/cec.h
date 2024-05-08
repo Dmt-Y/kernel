@@ -175,6 +175,10 @@ struct cec_adapter {
 	struct cec_fh *cec_follower;
 	struct cec_fh *cec_initiator;
 	bool passthrough;
+#ifndef __GENKSYMS__
+	bool transmit_in_progress_aborted:1;
+	bool is_claiming_log_addrs:1;
+#endif
 	struct cec_log_addrs log_addrs;
 
 #ifdef CONFIG_CEC_NOTIFIER

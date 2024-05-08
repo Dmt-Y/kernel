@@ -63,6 +63,9 @@ Description:
 		sets the requested frequency for the devfreq object if
 		userspace governor is in effect.
 
+		If the transition table is bigger than PAGE_SIZE, reading
+		this will return an -EFBIG error.
+
 What:		/sys/class/devfreq/.../available_frequencies
 Date:		October 2012
 Contact:	Nishanth Menon <nm@ti.com>
