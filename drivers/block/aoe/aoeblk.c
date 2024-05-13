@@ -348,6 +348,7 @@ aoeblk_gdalloc(void *vp)
 	mempool_t *mp;
 	struct request_queue *q;
 	enum { KB = 1024, MB = KB * KB, READ_AHEAD = 2 * MB, };
+	sector_t ssize;
 	ulong flags;
 	int late = 0;
 
@@ -403,7 +404,7 @@ aoeblk_gdalloc(void *vp)
 	gd->first_minor = d->sysminor;
 	gd->fops = &aoe_bdops;
 	gd->private_data = d;
-	set_capacity(gd, d->ssize);
+	ssize = d->ssize;
 	snprintf(gd->disk_name, sizeof gd->disk_name, "etherd/e%ld.%d",
 		d->aoemajor, d->aoeminor);
 
@@ -411,6 +412,8 @@ aoeblk_gdalloc(void *vp)
 	d->flags |= DEVFL_UP;
 
 	spin_unlock_irqrestore(&d->lock, flags);
+
+	set_capacity(gd, ssize);
 
 	device_add_disk(NULL, gd, aoe_attr_groups);
 	aoedisk_add_debugfs(d);
