@@ -599,7 +599,7 @@ static void __init sun8i_v3s_ccu_setup(struct device_node *node)
 	val &= ~GENMASK(19, 16);
 	writel(val | (3 << 16), reg + SUN8I_V3S_PLL_AUDIO_REG);
 
-	sunxi_ccu_probe(node, reg, &sun8i_v3s_ccu_desc);
+	of_sunxi_ccu_probe(node, reg, &sun8i_v3s_ccu_desc);
 }
 CLK_OF_DECLARE(sun8i_v3s_ccu, "allwinner,sun8i-v3s-ccu",
 	       sun8i_v3s_ccu_setup);
