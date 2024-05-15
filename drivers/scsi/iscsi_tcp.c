@@ -681,7 +681,8 @@ iscsi_sw_tcp_conn_bind(struct iscsi_cls_session *cls_session,
 
 	err = -EINVAL;
 	/* hardcode sk_is_tcp() since it is not available */
-	if (!(sk->sk_type == SOCK_STREAM && sk->sk_protocol == IPPROTO_TCP))
+	if (!(sock->sk->sk_type == SOCK_STREAM &&
+	      sock->sk->sk_protocol == IPPROTO_TCP))
 		goto free_socket;
 
 	err = iscsi_conn_bind(cls_session, cls_conn, is_leading);
