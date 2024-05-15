@@ -1757,23 +1757,6 @@ static int sas_get_phy_change_count(struct domain_device *dev,
 	return res;
 }
 
-static int sas_get_phy_attached_dev(struct domain_device *dev, int phy_id,
-				    u8 *sas_addr, enum sas_device_type *type)
-{
-	int res;
-	struct smp_disc_resp *disc_resp;
-
-	disc_resp = alloc_smp_resp(DISCOVER_RESP_SIZE);
-	if (!disc_resp)
-		return -ENOMEM;
-
-	res = sas_get_phy_discover(dev, phy_id, disc_resp);
-	if (res == 0)
-		sas_get_sas_addr_and_dev_type(disc_resp, sas_addr, type);
-	kfree(disc_resp);
-	return res;
-}
-
 static int sas_find_bcast_phy(struct domain_device *dev, int *phy_id,
 			      int from_phy, bool update)
 {
