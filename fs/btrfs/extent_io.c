@@ -4229,11 +4229,12 @@ retry:
 			}
 
 			/*
-			 * the filesystem may choose to bump up nr_to_write.
+			 * The filesystem may choose to bump up nr_to_write.
 			 * We have to make sure to honor the new nr_to_write
-			 * at any time
+			 * at any time.
 			 */
-			nr_to_write_done = wbc->nr_to_write <= 0;
+			nr_to_write_done = (wbc->sync_mode == WB_SYNC_NONE &&
+					    wbc->nr_to_write <= 0);
 		}
 		pagevec_release(&pvec);
 		cond_resched();
@@ -4297,7 +4298,7 @@ int extent_write_locked_range(struct inode *inode, u64 start, u64 end,
 		.sync_mode	= mode,
 		.nr_to_write	= nr_pages * 2,
 		.range_start	= start,
-		.range_end	= end + 1,
+		.range_end	= end,
 	};
 
 	while (start <= end) {

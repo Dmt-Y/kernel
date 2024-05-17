@@ -415,6 +415,7 @@ static struct tc_action_ops act_mirred_ops = {
 	.get_dev	=	tcf_mirred_get_dev,
 	.put_dev	=	tcf_mirred_put_dev,
 };
+MODULE_ALIAS_NET_ACT("mirred");
 
 static __net_init int mirred_init_net(struct net *net)
 {
