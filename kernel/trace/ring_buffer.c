@@ -701,7 +701,7 @@ int ring_buffer_poll_wait(struct ring_buffer *buffer, int cpu,
 		work = &buffer->irq_work;
 	else {
 		if (!cpumask_test_cpu(cpu, buffer->cpumask))
-			return -EINVAL;
+			return POLLERR;
 
 		cpu_buffer = buffer->buffers[cpu];
 		work = &cpu_buffer->irq_work;
