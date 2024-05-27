@@ -471,9 +471,6 @@ struct spi_controller {
 	/* I/O mutex */
 	struct mutex		io_mutex;
 
-	/* Used to avoid adding the same CS twice */
-	struct mutex		add_lock;
-
 	/* lock and mutex for SPI bus locking */
 	spinlock_t		bus_lock_spinlock;
 	struct mutex		bus_lock_mutex;
@@ -591,6 +588,11 @@ struct spi_controller {
 	void			*dummy_tx;
 
 	int (*fw_translate_cs)(struct spi_controller *ctlr, unsigned cs);
+
+#ifndef __GENKSYMS__
+	/* Used to avoid adding the same CS twice */
+	struct mutex		add_lock;
+#endif
 };
 
 static inline void *spi_controller_get_devdata(struct spi_controller *ctlr)
