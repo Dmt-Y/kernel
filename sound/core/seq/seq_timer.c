@@ -308,8 +308,16 @@ int snd_seq_timer_open(struct snd_seq_queue *q)
 	t->callback_data = q;
 	t->flags |= SNDRV_TIMER_IFLG_AUTO;
 	spin_lock_irq(&tmr->lock);
-	tmr->timeri = t;
+	if (tmr->timeri)
+		err = -EBUSY;
+	else
+		tmr->timeri = t;
 	spin_unlock_irq(&tmr->lock);
+	if (err < 0) {
+		snd_timer_close(t);
+		//snd_timer_instance_free(t); // FIXME: need 6a34367e52ca backport
+		return err;
+	}
 	return 0;
 }
 
