@@ -1458,6 +1458,7 @@ static int nfc_se_io(struct nfc_dev *dev, u32 se_idx,
 
 error:
 	device_unlock(&dev->dev);
+	kfree(cb_context);
 	return rc;
 }
 
