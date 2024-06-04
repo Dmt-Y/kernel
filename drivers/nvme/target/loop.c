@@ -621,8 +621,10 @@ static struct nvme_ctrl *nvme_loop_create_ctrl(struct device *dev,
 
 	ret = nvme_init_ctrl(&ctrl->ctrl, dev, &nvme_loop_ctrl_ops,
 				0 /* no quirks, we're perfect! */);
-	if (ret)
-		goto out_put_ctrl;
+	if (ret) {
+		kfree(ctrl);
+		goto out;
+	}
 
 	ret = -ENOMEM;
 
@@ -676,8 +678,7 @@ out_free_queues:
 out_uninit_ctrl:
 	nvme_uninit_ctrl(&ctrl->ctrl);
 	nvme_put_ctrl(&ctrl->ctrl);
-out_put_ctrl:
-	nvme_put_ctrl(&ctrl->ctrl);
+out:
 	if (ret > 0)
 		ret = -EIO;
 	return ERR_PTR(ret);
