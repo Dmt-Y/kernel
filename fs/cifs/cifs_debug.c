@@ -499,6 +499,8 @@ static ssize_t cifs_stats_proc_write(struct file *file,
 			list_for_each(tmp2, &server->smb_ses_list) {
 				ses = list_entry(tmp2, struct cifs_ses,
 						 smb_ses_list);
+				if (cifs_ses_exiting(ses))
+					continue;
 				list_for_each(tmp3, &ses->tcon_list) {
 					tcon = list_entry(tmp3,
 							  struct cifs_tcon,
