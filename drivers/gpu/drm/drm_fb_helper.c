@@ -2497,6 +2497,7 @@ static void drm_setup_crtcs(struct drm_fb_helper *fb_helper,
 {
 	struct drm_device *dev = fb_helper->dev;
 	struct drm_fb_helper_crtc **crtcs;
+	/* points to modes protected by mode_config.mutex */
 	struct drm_display_mode **modes;
 	struct drm_fb_offset *offsets;
 	bool *enabled;
@@ -2543,7 +2544,6 @@ static void drm_setup_crtcs(struct drm_fb_helper *fb_helper,
 
 		drm_pick_crtcs(fb_helper, crtcs, modes, 0, width, height);
 	}
-	mutex_unlock(&fb_helper->dev->mode_config.mutex);
 
 	/* need to set the modesets up here for use later */
 	/* fill out the connector<->crtc mappings into the modesets */
@@ -2577,6 +2577,8 @@ static void drm_setup_crtcs(struct drm_fb_helper *fb_helper,
 			modeset->y = offset->y;
 		}
 	}
+	mutex_unlock(&fb_helper->dev->mode_config.mutex);
+
 out:
 	kfree(crtcs);
 	kfree(modes);
