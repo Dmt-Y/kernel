@@ -6888,6 +6888,8 @@ static int si_dpm_enable(struct amdgpu_device *adev)
 	si_enable_auto_throttle_source(adev, AMDGPU_DPM_AUTO_THROTTLE_SRC_THERMAL, true);
 	si_thermal_start_thermal_controller(adev);
 
+	ni_update_current_ps(adev, boot_ps);
+
 	return 0;
 }
 
@@ -7345,10 +7347,9 @@ static int si_dpm_init(struct amdgpu_device *adev)
 
 	adev->pm.dpm.dyn_state.vddc_dependency_on_dispclk.entries =
 		kzalloc(4 * sizeof(struct amdgpu_clock_voltage_dependency_entry), GFP_KERNEL);
-	if (!adev->pm.dpm.dyn_state.vddc_dependency_on_dispclk.entries) {
-		amdgpu_free_extended_power_table(adev);
+	if (!adev->pm.dpm.dyn_state.vddc_dependency_on_dispclk.entries)
 		return -ENOMEM;
-	}
+
 	adev->pm.dpm.dyn_state.vddc_dependency_on_dispclk.count = 4;
 	adev->pm.dpm.dyn_state.vddc_dependency_on_dispclk.entries[0].clk = 0;
 	adev->pm.dpm.dyn_state.vddc_dependency_on_dispclk.entries[0].v = 0;

@@ -1278,7 +1278,7 @@ again:
 
 	if (i_done != page_cnt) {
 		spin_lock(&BTRFS_I(inode)->lock);
-		BTRFS_I(inode)->outstanding_extents++;
+		btrfs_mod_outstanding_extents(BTRFS_I(inode), 1);
 		spin_unlock(&BTRFS_I(inode)->lock);
 		btrfs_delalloc_release_space(inode, data_reserved,
 				start_index << PAGE_SHIFT,
@@ -1787,7 +1787,10 @@ static noinline int btrfs_ioctl_snap_create_v2(struct file *file,
 	if (vol_args->flags & BTRFS_SUBVOL_RDONLY)
 		readonly = true;
 	if (vol_args->flags & BTRFS_SUBVOL_QGROUP_INHERIT) {
-		if (vol_args->size > PAGE_SIZE) {
+		u64 nums;
+
+		if (vol_args->size < sizeof(*inherit) ||
+		    vol_args->size > PAGE_SIZE) {
 			ret = -EINVAL;
 			goto free_args;
 		}
@@ -1795,6 +1798,20 @@ static noinline int btrfs_ioctl_snap_create_v2(struct file *file,
 		if (IS_ERR(inherit)) {
 			ret = PTR_ERR(inherit);
 			goto free_args;
+		}
+
+		if (inherit->num_qgroups > PAGE_SIZE ||
+		    inherit->num_ref_copies > PAGE_SIZE ||
+		    inherit->num_excl_copies > PAGE_SIZE) {
+			ret = -EINVAL;
+			goto free_inherit;
+		}
+
+		nums = inherit->num_qgroups + 2 * inherit->num_ref_copies +
+		       2 * inherit->num_excl_copies;
+		if (vol_args->size != struct_size(inherit, qgroups, nums)) {
+			ret = -EINVAL;
+			goto free_inherit;
 		}
 	}
 
@@ -1916,8 +1933,13 @@ static noinline int btrfs_ioctl_subvol_setflags(struct file *file,
 
 	ret = btrfs_update_root(trans, fs_info->tree_root,
 				&root->root_key, &root->root_item);
+	if (ret < 0) {
+		btrfs_end_transaction(trans);
+		goto out_reset;
+	}
 
-	btrfs_commit_transaction(trans);
+	ret = btrfs_commit_transaction(trans);
+
 out_reset:
 	if (ret)
 		btrfs_set_root_flags(&root->root_item, root_flags);
@@ -2846,9 +2868,9 @@ static long btrfs_ioctl_fs_info(struct btrfs_fs_info *fs_info,
 	}
 	mutex_unlock(&fs_devices->device_list_mutex);
 
-	fi_args->nodesize = fs_info->super_copy->nodesize;
-	fi_args->sectorsize = fs_info->super_copy->sectorsize;
-	fi_args->clone_alignment = fs_info->super_copy->sectorsize;
+	fi_args->nodesize = fs_info->nodesize;
+	fi_args->sectorsize = fs_info->sectorsize;
+	fi_args->clone_alignment = fs_info->sectorsize;
 
 	if (copy_to_user(arg, fi_args, sizeof(*fi_args)))
 		ret = -EFAULT;
@@ -4098,6 +4120,10 @@ static long btrfs_ioctl_default_subvol(struct file *file, void __user *argp)
 		ret = PTR_ERR(new_root);
 		goto out;
 	}
+	if (!is_fstree(new_root->objectid)) {
+		ret = -ENOENT;
+		goto out;
+	}
 
 	path = btrfs_alloc_path();
 	if (!path) {
@@ -4373,6 +4399,11 @@ static long btrfs_ioctl_scrub(struct file *file, void __user *arg)
 	sa = memdup_user(arg, sizeof(*sa));
 	if (IS_ERR(sa))
 		return PTR_ERR(sa);
+
+	if (sa->flags & ~BTRFS_SCRUB_SUPPORTED_FLAGS) {
+		ret = -EOPNOTSUPP;
+		goto out;
+	}
 
 	if (!(sa->flags & BTRFS_SCRUB_READONLY)) {
 		ret = mnt_want_write_file(file);

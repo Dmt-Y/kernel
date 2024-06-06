@@ -70,7 +70,7 @@ tcf_proto_lookup_ops(const char *kind, struct netlink_ext_ack *extack)
 		return ops;
 #ifdef CONFIG_MODULES
 	rtnl_unlock();
-	request_module("cls_%s", kind);
+	request_module(NET_CLS_ALIAS_PREFIX "%s", kind);
 	rtnl_lock();
 	ops = __tcf_proto_lookup_ops(kind);
 	/* We dropped the RTNL semaphore in order to perform

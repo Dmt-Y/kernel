@@ -921,6 +921,19 @@ extern int ceph_setattr(struct dentry *dentry, struct iattr *attr);
 extern int ceph_getattr(const struct path *path, struct kstat *stat,
 			u32 request_mask, unsigned int flags);
 
+/*
+ * Simplified version of the function introduced by commit
+ * 5d6451b1489a ("ceph: shut down access to inode when async create fails")
+ * because this kernel doesn't have support for async creates.
+ */
+static inline bool ceph_inode_is_shutdown(struct inode *inode)
+{
+	struct ceph_fs_client *fsc = ceph_inode_to_client(inode);
+	int state = READ_ONCE(fsc->mount_state);
+
+	return state >= CEPH_MOUNT_SHUTDOWN;
+}
+
 /* xattr.c */
 int __ceph_setxattr(struct inode *, const char *, const void *, size_t, int);
 ssize_t __ceph_getxattr(struct inode *, const char *, void *, size_t);
