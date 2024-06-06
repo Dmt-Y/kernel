@@ -27,7 +27,7 @@
 #include <net/ip.h>
 #include <net/ipv6.h>
 
-#ifndef __GENKSYMS_
+#ifndef __GENKSYMS__
 #include <net/tcp.h>
 #endif
 
