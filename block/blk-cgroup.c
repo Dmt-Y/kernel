@@ -132,6 +132,7 @@ static struct blkcg_gq *blkg_alloc(struct blkcg *blkcg, struct request_queue *q,
 		blkg->pd[i] = pd;
 		pd->blkg = blkg;
 		pd->plid = i;
+		pd->online = false;
 	}
 
 	return blkg;
@@ -233,8 +234,11 @@ static struct blkcg_gq *blkg_create(struct blkcg *blkcg,
 		for (i = 0; i < BLKCG_MAX_POLS; i++) {
 			struct blkcg_policy *pol = blkcg_policy[i];
 
-			if (blkg->pd[i] && pol->pd_online_fn)
-				pol->pd_online_fn(blkg->pd[i]);
+			if (blkg->pd[i]) {
+				if (pol->pd_online_fn)
+					pol->pd_online_fn(blkg->pd[i]);
+				blkg->pd[i]->online = true;
+			}
 		}
 	}
 	blkg->online = true;
@@ -324,8 +328,11 @@ static void blkg_destroy(struct blkcg_gq *blkg)
 	for (i = 0; i < BLKCG_MAX_POLS; i++) {
 		struct blkcg_policy *pol = blkcg_policy[i];
 
-		if (blkg->pd[i] && pol->pd_offline_fn)
-			pol->pd_offline_fn(blkg->pd[i]);
+		if (blkg->pd[i] && blkg->pd[i]->online) {
+			if (pol->pd_offline_fn)
+				pol->pd_offline_fn(blkg->pd[i]);
+			blkg->pd[i]->online = false;
+		}
 	}
 
 	if (parent) {
@@ -1308,7 +1315,7 @@ int blkcg_activate_policy(struct request_queue *q,
 			  const struct blkcg_policy *pol)
 {
 	struct blkg_policy_data *pd_prealloc = NULL;
-	struct blkcg_gq *blkg;
+	struct blkcg_gq *blkg, *pinned_blkg = NULL;
 	int ret;
 
 	if (blkcg_policy_enabled(q, pol))
@@ -1318,50 +1325,97 @@ int blkcg_activate_policy(struct request_queue *q,
 		blk_mq_freeze_queue(q);
 	else
 		blk_queue_bypass_start(q);
-pd_prealloc:
-	if (!pd_prealloc) {
-		pd_prealloc = pol->pd_alloc_fn(GFP_KERNEL, q->node);
-		if (!pd_prealloc) {
-			ret = -ENOMEM;
-			goto out_bypass_end;
-		}
-	}
-
+retry:
 	spin_lock_irq(q->queue_lock);
 
-	list_for_each_entry(blkg, &q->blkg_list, q_node) {
+	/* blkg_list is pushed at the head, reverse walk to initialize parents first */
+	list_for_each_entry_reverse(blkg, &q->blkg_list, q_node) {
 		struct blkg_policy_data *pd;
 
 		if (blkg->pd[pol->plid])
 			continue;
 
-		pd = pol->pd_alloc_fn(GFP_NOWAIT | __GFP_NOWARN, q->node);
-		if (!pd)
-			swap(pd, pd_prealloc);
-		if (!pd) {
-			spin_unlock_irq(q->queue_lock);
-			goto pd_prealloc;
+		/* If prealloc matches, use it; otherwise try GFP_NOWAIT */
+		if (blkg == pinned_blkg) {
+			pd = pd_prealloc;
+			pd_prealloc = NULL;
+		} else {
+			pd = pol->pd_alloc_fn(GFP_NOWAIT | __GFP_NOWARN, q->node);
 		}
 
-		blkg->pd[pol->plid] = pd;
+		if (!pd) {
+			/*
+			 * GFP_NOWAIT failed.  Free the existing one and
+			 * prealloc for @blkg w/ GFP_KERNEL.
+			 */
+			if (pinned_blkg)
+				blkg_put(pinned_blkg);
+			blkg_get(blkg);
+			pinned_blkg = blkg;
+
+			spin_unlock_irq(q->queue_lock);
+
+			if (pd_prealloc)
+				pol->pd_free_fn(pd_prealloc);
+			pd_prealloc = pol->pd_alloc_fn(GFP_KERNEL, q->node);
+			if (pd_prealloc)
+				goto retry;
+			else
+				goto enomem;
+		}
+
+		spin_lock(&blkg->blkcg->lock);
+
 		pd->blkg = blkg;
 		pd->plid = pol->plid;
+		blkg->pd[pol->plid] = pd;
+
 		if (pol->pd_init_fn)
 			pol->pd_init_fn(pd);
+
+		if (pol->pd_online_fn)
+			pol->pd_online_fn(pd);
+		pd->online = true;
+
+		spin_unlock(&blkg->blkcg->lock);
 	}
 
 	__set_bit(pol->plid, q->blkcg_pols);
 	ret = 0;
 
 	spin_unlock_irq(q->queue_lock);
-out_bypass_end:
+out:
 	if (q->mq_ops)
 		blk_mq_unfreeze_queue(q);
 	else
 		blk_queue_bypass_end(q);
+	if (pinned_blkg)
+		blkg_put(pinned_blkg);
 	if (pd_prealloc)
 		pol->pd_free_fn(pd_prealloc);
 	return ret;
+
+enomem:
+	/* alloc failed, take down everything */
+	spin_lock_irq(q->queue_lock);
+	list_for_each_entry(blkg, &q->blkg_list, q_node) {
+		struct blkcg *blkcg = blkg->blkcg;
+		struct blkg_policy_data *pd;
+
+		spin_lock(&blkcg->lock);
+		pd = blkg->pd[pol->plid];
+		if (pd) {
+			if (pd->online && pol->pd_offline_fn)
+				pol->pd_offline_fn(pd);
+			pd->online = false;
+			pol->pd_free_fn(pd);
+			blkg->pd[pol->plid] = NULL;
+		}
+		spin_unlock(&blkcg->lock);
+	}
+	spin_unlock_irq(q->queue_lock);
+	ret = -ENOMEM;
+	goto out;
 }
 EXPORT_SYMBOL_GPL(blkcg_activate_policy);
 
@@ -1391,12 +1445,16 @@ void blkcg_deactivate_policy(struct request_queue *q,
 	__clear_bit(pol->plid, q->blkcg_pols);
 
 	list_for_each_entry(blkg, &q->blkg_list, q_node) {
+		struct blkcg *blkcg = blkg->blkcg;
+
+		spin_lock(&blkcg->lock);
 		if (blkg->pd[pol->plid]) {
-			if (pol->pd_offline_fn)
+			if (blkg->pd[pol->plid]->online && pol->pd_offline_fn)
 				pol->pd_offline_fn(blkg->pd[pol->plid]);
 			pol->pd_free_fn(blkg->pd[pol->plid]);
 			blkg->pd[pol->plid] = NULL;
 		}
+		spin_unlock(&blkcg->lock);
 	}
 
 	spin_unlock_irq(q->queue_lock);
@@ -1419,6 +1477,12 @@ int blkcg_policy_register(struct blkcg_policy *pol)
 {
 	struct blkcg *blkcg;
 	int i, ret;
+
+	/* KABI preservation of struct blkg_policy_data, 32b is broken */
+#ifndef CONFIG_ARM
+	BUILD_BUG_ON(sizeof(struct blkg_policy_data) != 2*sizeof(void *));
+	BUILD_BUG_ON(sizeof(struct blkg_policy_data) <= sizeof(void*)+sizeof(int));
+#endif
 
 	mutex_lock(&blkcg_pol_register_mutex);
 	mutex_lock(&blkcg_pol_mutex);
