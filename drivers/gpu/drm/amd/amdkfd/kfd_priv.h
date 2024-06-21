@@ -176,6 +176,8 @@ enum kfd_sched_policy {
 	KFD_SCHED_POLICY_NO_HWS
 };
 
+extern struct mutex kfd_processes_mutex;
+
 enum cache_policy {
 	cache_policy_coherent,
 	cache_policy_noncoherent
