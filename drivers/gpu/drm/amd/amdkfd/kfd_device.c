@@ -618,7 +618,7 @@ void kgd2kfd_suspend(struct kfd_dev *kfd)
 
 int kgd2kfd_resume(struct kfd_dev *kfd)
 {
-	int ret, i;
+	int ret;
 
 	if (!kfd->init_complete)
 		return 0;
