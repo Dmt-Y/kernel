@@ -1140,7 +1140,7 @@ static void bond_setup_by_slave(struct net_device *bond_dev,
 	memcpy(bond_dev->broadcast, slave_dev->broadcast,
 		slave_dev->addr_len);
 	if (was_up)
-		dev_open(bond_dev, NULL);
+		dev_open(bond_dev);
 }
 
 /* On bonding slaves other than the currently active slave, suppress
