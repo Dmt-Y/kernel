@@ -508,10 +508,12 @@ void hns_roce_cq_event(struct hns_roce_dev *hr_dev, u32 cqn, int event_type)
 	struct device *dev = hr_dev->dev;
 	struct hns_roce_cq *cq;
 
+	spin_lock(&cq_table->lock);
 	cq = radix_tree_lookup(&cq_table->tree,
 			       cqn & (hr_dev->caps.num_cqs - 1));
 	if (cq)
 		atomic_inc(&cq->refcount);
+	spin_unlock(&cq_table->lock);
 
 	if (!cq) {
 		dev_warn(dev, "Async event for bogus CQ %08x\n", cqn);
