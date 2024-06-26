@@ -1494,7 +1494,7 @@ static void raid1_write_request(struct mddev *mddev, struct bio *bio,
 		for (j = 0; j < i; j++)
 			if (r1_bio->bios[j])
 				rdev_dec_pending(conf->mirrors[j].rdev, mddev);
-		mempool_free(r1_bio, &conf->r1bio_pool);
+		mempool_free(r1_bio, conf->r1bio_pool);
 		allow_barrier(conf, bio->bi_iter.bi_sector);
 		raid1_log(mddev, "wait rdev %d blocked", blocked_rdev->raid_disk);
 		md_wait_for_blocked_rdev(blocked_rdev, mddev);
