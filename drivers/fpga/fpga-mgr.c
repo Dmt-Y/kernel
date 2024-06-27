@@ -455,20 +455,16 @@ static struct attribute *fpga_mgr_attrs[] = {
 };
 ATTRIBUTE_GROUPS(fpga_mgr);
 
-static struct fpga_manager *__fpga_mgr_get(struct device *dev)
+static struct fpga_manager *__fpga_mgr_get(struct device *mgr_dev)
 {
 	struct fpga_manager *mgr;
 
-	mgr = to_fpga_manager(dev);
+	mgr = to_fpga_manager(mgr_dev);
 
-	if (!try_module_get(dev->parent->driver->owner))
-		goto err_dev;
+	if (!try_module_get(mgr->mops_owner))
+		mgr = ERR_PTR(-ENODEV);
 
 	return mgr;
-
-err_dev:
-	put_device(dev);
-	return ERR_PTR(-ENODEV);
 }
 
 static int fpga_mgr_dev_match(struct device *dev, const void *data)
@@ -484,12 +480,18 @@ static int fpga_mgr_dev_match(struct device *dev, const void *data)
  */
 struct fpga_manager *fpga_mgr_get(struct device *dev)
 {
-	struct device *mgr_dev = class_find_device(fpga_mgr_class, NULL, dev,
-						   fpga_mgr_dev_match);
+	struct fpga_manager *mgr;
+	struct device *mgr_dev;
+
+	mgr_dev = class_find_device(fpga_mgr_class, NULL, dev, fpga_mgr_dev_match);
 	if (!mgr_dev)
 		return ERR_PTR(-ENODEV);
 
-	return __fpga_mgr_get(mgr_dev);
+	mgr = __fpga_mgr_get(mgr_dev);
+	if (IS_ERR(mgr))
+		put_device(mgr_dev);
+
+	return mgr;
 }
 EXPORT_SYMBOL_GPL(fpga_mgr_get);
 
@@ -507,14 +509,19 @@ static int fpga_mgr_of_node_match(struct device *dev, const void *data)
  */
 struct fpga_manager *of_fpga_mgr_get(struct device_node *node)
 {
-	struct device *dev;
+	struct fpga_manager *mgr;
+	struct device *mgr_dev;
 
-	dev = class_find_device(fpga_mgr_class, NULL, node,
-				fpga_mgr_of_node_match);
-	if (!dev)
+	mgr_dev = class_find_device(fpga_mgr_class, NULL, node,
+				    fpga_mgr_of_node_match);
+	if (!mgr_dev)
 		return ERR_PTR(-ENODEV);
 
-	return __fpga_mgr_get(dev);
+	mgr = __fpga_mgr_get(mgr_dev);
+	if (IS_ERR(mgr))
+		put_device(mgr_dev);
+
+	return mgr;
 }
 EXPORT_SYMBOL_GPL(of_fpga_mgr_get);
 
@@ -524,7 +531,7 @@ EXPORT_SYMBOL_GPL(of_fpga_mgr_get);
  */
 void fpga_mgr_put(struct fpga_manager *mgr)
 {
-	module_put(mgr->dev.parent->driver->owner);
+	module_put(mgr->mops_owner);
 	put_device(&mgr->dev);
 }
 EXPORT_SYMBOL_GPL(fpga_mgr_put);
@@ -563,7 +570,7 @@ void fpga_mgr_unlock(struct fpga_manager *mgr)
 EXPORT_SYMBOL_GPL(fpga_mgr_unlock);
 
 /**
- * fpga_mgr_create - create and initialize a FPGA manager struct
+ * __fpga_mgr_create - create and initialize a FPGA manager struct
  * @dev:	fpga manager device from pdev
  * @name:	fpga manager name
  * @mops:	pointer to structure of fpga manager ops
@@ -571,9 +578,10 @@ EXPORT_SYMBOL_GPL(fpga_mgr_unlock);
  *
  * Return: pointer to struct fpga_manager or NULL
  */
-struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
-				     const struct fpga_manager_ops *mops,
-				     void *priv)
+struct fpga_manager *
+__fpga_mgr_create(struct device *dev, const char *name,
+		  const struct fpga_manager_ops *mops,
+		  void *priv, struct module *owner)
 {
 	struct fpga_manager *mgr;
 	int id, ret;
@@ -602,6 +610,8 @@ struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
 
 	mutex_init(&mgr->ref_mutex);
 
+	mgr->mops_owner = owner;
+
 	mgr->name = name;
 	mgr->mops = mops;
 	mgr->priv = priv;
@@ -625,6 +635,16 @@ error_kfree:
 	kfree(mgr);
 
 	return NULL;
+}
+EXPORT_SYMBOL_GPL(__fpga_mgr_create);
+
+/* FIXME: provided only for kABI compatibility */
+#undef fpga_mgr_create
+struct fpga_manager *
+fpga_mgr_create(struct device *dev, const char *name,
+		const struct fpga_manager_ops *mops, void *priv)
+{
+	return __fpga_mgr_create(dev, name, mops, priv, dev->parent->driver->owner);
 }
 EXPORT_SYMBOL_GPL(fpga_mgr_create);
 
