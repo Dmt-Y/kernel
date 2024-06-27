@@ -64,7 +64,7 @@ static struct fpga_region *fpga_region_get(struct fpga_region *region)
 	}
 
 	get_device(dev);
-	if (!try_module_get(dev->parent->driver->owner)) {
+	if (!try_module_get(region->ops_owner)) {
 		put_device(dev);
 		mutex_unlock(&region->mutex);
 		return ERR_PTR(-ENODEV);
@@ -86,7 +86,7 @@ static void fpga_region_put(struct fpga_region *region)
 
 	dev_dbg(dev, "put\n");
 
-	module_put(dev->parent->driver->owner);
+	module_put(region->ops_owner);
 	put_device(dev);
 	mutex_unlock(&region->mutex);
 }
@@ -191,10 +191,11 @@ ATTRIBUTE_GROUPS(fpga_region);
  *
  * Return: struct fpga_region or NULL
  */
-struct fpga_region
-*fpga_region_create(struct device *dev,
-		    struct fpga_manager *mgr,
-		    int (*get_bridges)(struct fpga_region *))
+struct fpga_region *
+__fpga_region_create(struct device *dev,
+		     struct fpga_manager *mgr,
+		     int (*get_bridges)(struct fpga_region *),
+		     struct module *owner)
 {
 	struct fpga_region *region;
 	int id, ret = 0;
@@ -209,6 +210,7 @@ struct fpga_region
 
 	region->mgr = mgr;
 	region->get_bridges = get_bridges;
+	region->ops_owner = owner;
 	mutex_init(&region->mutex);
 	INIT_LIST_HEAD(&region->bridge_list);
 
@@ -230,6 +232,17 @@ err_free:
 	kfree(region);
 
 	return NULL;
+}
+EXPORT_SYMBOL_GPL(__fpga_region_create);
+
+/* FIXME: provided only for kABI compatibility */
+#undef fpga_region_create
+struct fpga_region *
+fpga_region_create(struct device *dev,
+		   struct fpga_manager *mgr,
+		   int (*get_bridges)(struct fpga_region *))
+{
+	return __fpga_region_create(dev, mgr, get_bridges, dev->parent->driver->owner);
 }
 EXPORT_SYMBOL_GPL(fpga_region_create);
 
