@@ -5154,16 +5154,21 @@ static int mlx5e_attach(struct mlx5_core_dev *mdev, void *vpriv)
 	return 0;
 }
 
-static void mlx5e_detach(struct mlx5_core_dev *mdev, void *vpriv)
+static void _mlx5e_detach(struct mlx5_core_dev *mdev, void *vpriv, bool pre_netdev_reg)
 {
 	struct mlx5e_priv *priv = vpriv;
 	struct net_device *netdev = priv->netdev;
 
-	if (!netif_device_present(netdev))
+	if (!pre_netdev_reg && !netif_device_present(netdev))
 		return;
 
 	mlx5e_detach_netdev(priv);
 	mlx5e_destroy_mdev_resources(mdev);
+}
+
+static void mlx5e_detach(struct mlx5_core_dev *mdev, void *vpriv)
+{
+	_mlx5e_detach(mdev, vpriv, false);
 }
 
 static void *mlx5e_add(struct mlx5_core_dev *mdev)
@@ -5215,7 +5220,7 @@ static void *mlx5e_add(struct mlx5_core_dev *mdev)
 	return priv;
 
 err_detach:
-	mlx5e_detach(mdev, priv);
+	_mlx5e_detach(mdev, priv, true);
 err_destroy_netdev:
 	mlx5e_destroy_netdev(priv);
 err_free_rpriv:
@@ -5232,7 +5237,7 @@ static void mlx5e_remove(struct mlx5_core_dev *mdev, void *vpriv)
 	mlx5e_dcbnl_delete_app(priv);
 #endif
 	unregister_netdev(priv->netdev);
-	mlx5e_detach(mdev, vpriv);
+	_mlx5e_detach(mdev, vpriv, false);
 	mlx5e_destroy_netdev(priv);
 	kfree(ppriv);
 }
