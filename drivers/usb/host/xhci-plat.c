@@ -376,6 +376,10 @@ static int __maybe_unused xhci_plat_suspend(struct device *dev)
 	 * reconsider this when xhci_plat_suspend enlarges its scope, e.g.,
 	 * also applies to runtime suspend.
 	 */
+
+	if (pm_runtime_suspended(dev))
+		pm_runtime_resume(dev);
+
 	return xhci_suspend(xhci, device_may_wakeup(dev));
 }
 
