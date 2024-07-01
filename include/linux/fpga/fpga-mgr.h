@@ -161,6 +161,7 @@ struct fpga_compat_id {
  * @state: state of fpga manager
  * @compat_id: FPGA manager id for compatibility check.
  * @mops: pointer to struct of fpga manager ops
+ * @mops_owner: module containing the mops
  * @priv: low level driver private date
  */
 struct fpga_manager {
@@ -171,6 +172,9 @@ struct fpga_manager {
 	struct fpga_compat_id *compat_id;
 	const struct fpga_manager_ops *mops;
 	void *priv;
+#ifndef __GENKSYMS__
+	struct module *mops_owner;
+#endif
 };
 
 #define to_fpga_manager(d) container_of(d, struct fpga_manager, dev)
@@ -190,9 +194,11 @@ struct fpga_manager *fpga_mgr_get(struct device *dev);
 
 void fpga_mgr_put(struct fpga_manager *mgr);
 
-struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
-				     const struct fpga_manager_ops *mops,
-				     void *priv);
+struct fpga_manager *__fpga_mgr_create(struct device *dev, const char *name,
+				       const struct fpga_manager_ops *mops,
+				       void *priv, struct module *owner);
+#define fpga_mgr_create(dev, name, mops, priv)		\
+	__fpga_mgr_create(dev, name, mops, priv, THIS_MODULE)
 void fpga_mgr_free(struct fpga_manager *mgr);
 int fpga_mgr_register(struct fpga_manager *mgr);
 void fpga_mgr_unregister(struct fpga_manager *mgr);
