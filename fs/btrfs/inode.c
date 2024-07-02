@@ -4401,7 +4401,7 @@ out:
  */
 int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 			       struct btrfs_root *root,
-			       struct inode *inode,
+			       struct btrfs_inode *inode,
 			       u64 new_size, u32 min_type)
 {
 	struct btrfs_fs_info *fs_info = root->fs_info;
@@ -4422,7 +4422,7 @@ int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 	int pending_del_slot = 0;
 	int extent_type = -1;
 	int ret;
-	u64 ino = btrfs_ino(BTRFS_I(inode));
+	u64 ino = btrfs_ino(inode);
 	u64 bytes_deleted = 0;
 	bool be_nice = 0;
 	bool should_throttle = 0;
@@ -4433,7 +4433,7 @@ int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 	 * for non-free space inodes and ref cows, we want to back off from
 	 * time to time
 	 */
-	if (!btrfs_is_free_space_inode(BTRFS_I(inode)) &&
+	if (!btrfs_is_free_space_inode(inode) &&
 	    test_bit(BTRFS_ROOT_REF_COWS, &root->state))
 		be_nice = 1;
 
@@ -4449,7 +4449,7 @@ int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 	 */
 	if (test_bit(BTRFS_ROOT_REF_COWS, &root->state) ||
 	    root == fs_info->tree_root)
-		btrfs_drop_extent_cache(BTRFS_I(inode), ALIGN(new_size,
+		btrfs_drop_extent_cache(inode, ALIGN(new_size,
 					fs_info->sectorsize),
 					(u64)-1, 0);
 
@@ -4459,8 +4459,8 @@ int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 	 * it is used to drop the loged items. So we shouldn't kill the delayed
 	 * items.
 	 */
-	if (min_type == 0 && root == BTRFS_I(inode)->root)
-		btrfs_kill_delayed_inode_items(BTRFS_I(inode));
+	if (min_type == 0 && root == inode->root)
+		btrfs_kill_delayed_inode_items(inode);
 
 	key.objectid = ino;
 	key.offset = (u64)-1;
@@ -4516,14 +4516,14 @@ search_again:
 				    btrfs_file_extent_num_bytes(leaf, fi);
 
 				trace_btrfs_truncate_show_fi_regular(
-					BTRFS_I(inode), leaf, fi,
+					inode, leaf, fi,
 					found_key.offset);
 			} else if (extent_type == BTRFS_FILE_EXTENT_INLINE) {
 				item_end += btrfs_file_extent_inline_len(leaf,
 							 path->slots[0], fi);
 
 				trace_btrfs_truncate_show_fi_inline(
-					BTRFS_I(inode), leaf, fi, path->slots[0],
+					inode, leaf, fi, path->slots[0],
 					found_key.offset);
 			}
 			item_end--;
@@ -4562,7 +4562,8 @@ search_again:
 				if (test_bit(BTRFS_ROOT_REF_COWS,
 					     &root->state) &&
 				    extent_start != 0)
-					inode_sub_bytes(inode, num_dec);
+					inode_sub_bytes(&inode->vfs_inode,
+							num_dec);
 				btrfs_mark_buffer_dirty(leaf);
 			} else {
 				extent_num_bytes =
@@ -4577,7 +4578,8 @@ search_again:
 					found_extent = 1;
 					if (test_bit(BTRFS_ROOT_REF_COWS,
 						     &root->state))
-						inode_sub_bytes(inode, num_dec);
+						inode_sub_bytes(&inode->vfs_inode,
+								num_dec);
 				}
 			}
 			clear_len = num_dec;
@@ -4612,7 +4614,7 @@ search_again:
 			}
 
 			if (test_bit(BTRFS_ROOT_REF_COWS, &root->state))
-				inode_sub_bytes(inode, item_end + 1 - new_size);
+				inode_sub_bytes(&inode->vfs_inode, item_end + 1 - new_size);
 		}
 delete:
 		/*
@@ -4620,8 +4622,8 @@ delete:
 		 * multiple fsyncs, and in this case we don't want to clear the
 		 * file extent range because it's just the log.
 		 */
-		if (root == BTRFS_I(inode)->root) {
-			ret = btrfs_inode_clear_file_extent_range(BTRFS_I(inode),
+		if (root == inode->root) {
+			ret = btrfs_inode_clear_file_extent_range(inode,
 						  clear_start, clear_len);
 			if (ret) {
 				btrfs_abort_transaction(trans, ret);
@@ -4728,7 +4730,7 @@ out:
 		ASSERT(last_size >= new_size);
 		if (!ret && last_size > new_size)
 			last_size = new_size;
-		btrfs_inode_safe_disk_i_size_write(inode, last_size);
+		btrfs_inode_safe_disk_i_size_write(&inode->vfs_inode, last_size);
 	}
 
 	btrfs_free_path(path);
@@ -5339,7 +5341,8 @@ void btrfs_evict_inode(struct inode *inode)
 
 		trans->block_rsv = rsv;
 
-		ret = btrfs_truncate_inode_items(trans, root, inode, 0, 0);
+		ret = btrfs_truncate_inode_items(trans, root, BTRFS_I(inode),
+						 0, 0);
 		trans->block_rsv = &fs_info->trans_block_rsv;
 		btrfs_end_transaction(trans);
 		btrfs_btree_balance_dirty(fs_info);
@@ -9227,7 +9230,7 @@ static int btrfs_truncate(struct inode *inode)
 	trans->block_rsv = rsv;
 
 	while (1) {
-		ret = btrfs_truncate_inode_items(trans, root, inode,
+		ret = btrfs_truncate_inode_items(trans, root, BTRFS_I(inode),
 						 inode->i_size,
 						 BTRFS_EXTENT_DATA_KEY);
 		trans->block_rsv = &fs_info->trans_block_rsv;
