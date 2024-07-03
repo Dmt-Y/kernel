@@ -171,6 +171,7 @@ void cond_policydb_destroy(struct policydb *p)
 	kfree(p->bool_val_to_struct);
 	avtab_destroy(&p->te_cond_avtab);
 	cond_list_destroy(p->cond_list);
+	p->cond_list = NULL;
 }
 
 int cond_init_bool_indexes(struct policydb *p)
