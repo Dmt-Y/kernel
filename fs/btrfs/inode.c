@@ -4389,20 +4389,36 @@ out:
 #define NEED_TRUNCATE_BLOCK 1
 
 /*
- * this can truncate away extent items, csum items and directory items.
- * It starts at a high offset and removes keys until it can't find
- * any higher than new_size
+ * Remove inode items from a given root.
  *
- * csum items that cross the new i_size are truncated to the new size
- * as well.
+ * @trans:		A transaction handle.
+ * @root:		The root from which to remove items.
+ * @inode:		The inode whose items we want to remove.
+ * @new_size:		The new i_size for the inode. This is only applicable when
+ *			@min_type is BTRFS_EXTENT_DATA_KEY, must be 0 otherwise.
+ * @min_type:		The minimum key type to remove. All keys with a type
+ *			greater than this value are removed and all keys with
+ *			this type are removed only if their offset is >= @new_size.
+ * @extents_found:	Output parameter that will contain the number of file
+ *			extent items that were removed or adjusted to the new
+ *			inode i_size. The caller is responsible for initializing
+ *			the counter. Also, it can be NULL if the caller does not
+ *			need this counter.
  *
- * min_type is the minimum key type to truncate down to.  If set to 0, this
- * will kill all the items on this inode, including the INODE_ITEM_KEY.
+ * Remove all keys associated with the inode from the given root that have a key
+ * with a type greater than or equals to @min_type. When @min_type has a value of
+ * BTRFS_EXTENT_DATA_KEY, only remove file extent items that have an offset value
+ * greater than or equals to @new_size. If a file extent item that starts before
+ * @new_size and ends after it is found, its length is adjusted.
+ *
+ * Returns: 0 on success, < 0 on error and NEED_TRUNCATE_BLOCK when @min_type is
+ * BTRFS_EXTENT_DATA_KEY and the caller must truncate the last block.
  */
 int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 			       struct btrfs_root *root,
-			       struct inode *inode,
-			       u64 new_size, u32 min_type)
+			       struct btrfs_inode *inode,
+			       u64 new_size, u32 min_type,
+			       u64 *extents_found)
 {
 	struct btrfs_fs_info *fs_info = root->fs_info;
 	struct btrfs_path *path;
@@ -4422,7 +4438,7 @@ int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 	int pending_del_slot = 0;
 	int extent_type = -1;
 	int ret;
-	u64 ino = btrfs_ino(BTRFS_I(inode));
+	u64 ino = btrfs_ino(inode);
 	u64 bytes_deleted = 0;
 	bool be_nice = 0;
 	bool should_throttle = 0;
@@ -4433,7 +4449,7 @@ int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 	 * for non-free space inodes and ref cows, we want to back off from
 	 * time to time
 	 */
-	if (!btrfs_is_free_space_inode(BTRFS_I(inode)) &&
+	if (!btrfs_is_free_space_inode(inode) &&
 	    test_bit(BTRFS_ROOT_REF_COWS, &root->state))
 		be_nice = 1;
 
@@ -4449,7 +4465,7 @@ int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 	 */
 	if (test_bit(BTRFS_ROOT_REF_COWS, &root->state) ||
 	    root == fs_info->tree_root)
-		btrfs_drop_extent_cache(BTRFS_I(inode), ALIGN(new_size,
+		btrfs_drop_extent_cache(inode, ALIGN(new_size,
 					fs_info->sectorsize),
 					(u64)-1, 0);
 
@@ -4459,8 +4475,8 @@ int btrfs_truncate_inode_items(struct btrfs_trans_handle *trans,
 	 * it is used to drop the loged items. So we shouldn't kill the delayed
 	 * items.
 	 */
-	if (min_type == 0 && root == BTRFS_I(inode)->root)
-		btrfs_kill_delayed_inode_items(BTRFS_I(inode));
+	if (min_type == 0 && root == inode->root)
+		btrfs_kill_delayed_inode_items(inode);
 
 	key.objectid = ino;
 	key.offset = (u64)-1;
@@ -4516,14 +4532,14 @@ search_again:
 				    btrfs_file_extent_num_bytes(leaf, fi);
 
 				trace_btrfs_truncate_show_fi_regular(
-					BTRFS_I(inode), leaf, fi,
+					inode, leaf, fi,
 					found_key.offset);
 			} else if (extent_type == BTRFS_FILE_EXTENT_INLINE) {
 				item_end += btrfs_file_extent_inline_len(leaf,
 							 path->slots[0], fi);
 
 				trace_btrfs_truncate_show_fi_inline(
-					BTRFS_I(inode), leaf, fi, path->slots[0],
+					inode, leaf, fi, path->slots[0],
 					found_key.offset);
 			}
 			item_end--;
@@ -4542,6 +4558,9 @@ search_again:
 		/* FIXME, shrink the extent if the ref count is only 1 */
 		if (found_type != BTRFS_EXTENT_DATA_KEY)
 			goto delete;
+
+		if (extents_found != NULL)
+			(*extents_found)++;
 
 		if (extent_type != BTRFS_FILE_EXTENT_INLINE) {
 			u64 num_dec;
@@ -4562,7 +4581,8 @@ search_again:
 				if (test_bit(BTRFS_ROOT_REF_COWS,
 					     &root->state) &&
 				    extent_start != 0)
-					inode_sub_bytes(inode, num_dec);
+					inode_sub_bytes(&inode->vfs_inode,
+							num_dec);
 				btrfs_mark_buffer_dirty(leaf);
 			} else {
 				extent_num_bytes =
@@ -4577,7 +4597,8 @@ search_again:
 					found_extent = 1;
 					if (test_bit(BTRFS_ROOT_REF_COWS,
 						     &root->state))
-						inode_sub_bytes(inode, num_dec);
+						inode_sub_bytes(&inode->vfs_inode,
+								num_dec);
 				}
 			}
 			clear_len = num_dec;
@@ -4612,7 +4633,7 @@ search_again:
 			}
 
 			if (test_bit(BTRFS_ROOT_REF_COWS, &root->state))
-				inode_sub_bytes(inode, item_end + 1 - new_size);
+				inode_sub_bytes(&inode->vfs_inode, item_end + 1 - new_size);
 		}
 delete:
 		/*
@@ -4620,8 +4641,8 @@ delete:
 		 * multiple fsyncs, and in this case we don't want to clear the
 		 * file extent range because it's just the log.
 		 */
-		if (root == BTRFS_I(inode)->root) {
-			ret = btrfs_inode_clear_file_extent_range(BTRFS_I(inode),
+		if (root == inode->root) {
+			ret = btrfs_inode_clear_file_extent_range(inode,
 						  clear_start, clear_len);
 			if (ret) {
 				btrfs_abort_transaction(trans, ret);
@@ -4728,7 +4749,7 @@ out:
 		ASSERT(last_size >= new_size);
 		if (!ret && last_size > new_size)
 			last_size = new_size;
-		btrfs_inode_safe_disk_i_size_write(inode, last_size);
+		btrfs_inode_safe_disk_i_size_write(&inode->vfs_inode, last_size);
 	}
 
 	btrfs_free_path(path);
@@ -5339,7 +5360,8 @@ void btrfs_evict_inode(struct inode *inode)
 
 		trans->block_rsv = rsv;
 
-		ret = btrfs_truncate_inode_items(trans, root, inode, 0, 0);
+		ret = btrfs_truncate_inode_items(trans, root, BTRFS_I(inode),
+						 0, 0, NULL);
 		trans->block_rsv = &fs_info->trans_block_rsv;
 		btrfs_end_transaction(trans);
 		btrfs_btree_balance_dirty(fs_info);
@@ -9161,6 +9183,7 @@ static int btrfs_truncate(struct inode *inode)
 	struct btrfs_trans_handle *trans;
 	u64 mask = fs_info->sectorsize - 1;
 	u64 min_size = btrfs_calc_metadata_size(fs_info, 1);
+	u64 extents_found = 0;
 
 	ret = btrfs_wait_ordered_range(inode, inode->i_size & (~mask),
 				       (u64)-1);
@@ -9216,20 +9239,13 @@ static int btrfs_truncate(struct inode *inode)
 				      min_size, 0);
 	BUG_ON(ret);
 
-	/*
-	 * So if we truncate and then write and fsync we normally would just
-	 * write the extents that changed, which is a problem if we need to
-	 * first truncate that entire inode.  So set this flag so we write out
-	 * all of the extents in the inode to the sync log so we're completely
-	 * safe.
-	 */
-	set_bit(BTRFS_INODE_NEEDS_FULL_SYNC, &BTRFS_I(inode)->runtime_flags);
 	trans->block_rsv = rsv;
 
 	while (1) {
-		ret = btrfs_truncate_inode_items(trans, root, inode,
+		ret = btrfs_truncate_inode_items(trans, root, BTRFS_I(inode),
 						 inode->i_size,
-						 BTRFS_EXTENT_DATA_KEY);
+						 BTRFS_EXTENT_DATA_KEY,
+						 &extents_found);
 		trans->block_rsv = &fs_info->trans_block_rsv;
 		if (ret != -ENOSPC && ret != -EAGAIN)
 			break;
@@ -9291,6 +9307,22 @@ static int btrfs_truncate(struct inode *inode)
 	}
 out:
 	btrfs_free_block_rsv(fs_info, rsv);
+	/*
+	 * So if we truncate and then write and fsync we normally would just
+	 * write the extents that changed, which is a problem if we need to
+	 * first truncate that entire inode.  So set this flag so we write out
+	 * all of the extents in the inode to the sync log so we're completely
+	 * safe.
+	 *
+	 * If no extents were dropped or trimmed we don't need to force the next
+	 * fsync to truncate all the inode's items from the log and re-log them
+	 * all. This means the truncate operation did not change the file size,
+	 * or changed it to a smaller size but there was only an implicit hole
+	 * between the old i_size and the new i_size, and there were no prealloc
+	 * extents beyond i_size to drop.
+	 */
+	if (extents_found > 0)
+		set_bit(BTRFS_INODE_NEEDS_FULL_SYNC, &BTRFS_I(inode)->runtime_flags);
 
 	return ret;
 }

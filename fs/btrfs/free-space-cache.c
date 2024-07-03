@@ -280,8 +280,8 @@ int btrfs_truncate_free_space_cache(struct btrfs_trans_handle *trans,
 	 * We skip the throttling logic for free space cache inodes, so we don't
 	 * need to check for -EAGAIN.
 	 */
-	ret = btrfs_truncate_inode_items(trans, root, inode,
-					 0, BTRFS_EXTENT_DATA_KEY);
+	ret = btrfs_truncate_inode_items(trans, root, BTRFS_I(inode),
+					 0, BTRFS_EXTENT_DATA_KEY, NULL);
 	if (ret)
 		goto fail;
 
