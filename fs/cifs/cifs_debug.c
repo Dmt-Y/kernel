@@ -171,6 +171,8 @@ static int cifs_debug_files_proc_show(struct seq_file *m, void *v)
 	list_for_each_entry(server, &cifs_tcp_ses_list, tcp_ses_list) {
 		list_for_each(tmp, &server->smb_ses_list) {
 			ses = list_entry(tmp, struct cifs_ses, smb_ses_list);
+			if (cifs_ses_exiting(ses))
+				continue;
 			list_for_each(tmp1, &ses->tcon_list) {
 				tcon = list_entry(tmp1, struct cifs_tcon, tcon_list);
 				spin_lock(&tcon->open_file_lock);
@@ -255,7 +257,6 @@ static int cifs_debug_data_proc_show(struct seq_file *m, void *v)
 	seq_printf(m, "Active VFS Requests: %d\n", GlobalTotalActiveXid);
 	seq_printf(m, "Servers:");
 
-	i = 0;
 	spin_lock(&cifs_tcp_ses_lock);
 	list_for_each_entry(server, &cifs_tcp_ses_list, tcp_ses_list) {
 #ifdef CONFIG_CIFS_SMB_DIRECT
@@ -339,10 +340,16 @@ skip_rdma:
 		if (server->nosharesock)
 			seq_printf(m, " nosharesock");
 
-		i++;
+		i = 0;
 		list_for_each(tmp2, &server->smb_ses_list) {
 			ses = list_entry(tmp2, struct cifs_ses,
 					 smb_ses_list);
+			if (cifs_ses_exiting(ses)) {
+				continue;
+			}
+			i++;
+
+			spin_lock(&ses->ses_lock);
 			if ((ses->serverDomain == NULL) ||
 				(ses->serverOS == NULL) ||
 				(ses->serverNOS == NULL)) {
@@ -406,6 +413,7 @@ skip_rdma:
 				seq_printf(m, "\n\t%d) ", j);
 				cifs_debug_tcon(m, tcon);
 			}
+			spin_unlock(&ses->ses_lock);
 
 			seq_puts(m, "\n\tMIDs:\n");
 
@@ -497,6 +505,8 @@ static ssize_t cifs_stats_proc_write(struct file *file,
 			list_for_each(tmp2, &server->smb_ses_list) {
 				ses = list_entry(tmp2, struct cifs_ses,
 						 smb_ses_list);
+				if (cifs_ses_exiting(ses))
+					continue;
 				list_for_each(tmp3, &ses->tcon_list) {
 					tcon = list_entry(tmp3,
 							  struct cifs_tcon,
@@ -578,6 +588,8 @@ static int cifs_stats_proc_show(struct seq_file *m, void *v)
 		list_for_each(tmp2, &server->smb_ses_list) {
 			ses = list_entry(tmp2, struct cifs_ses,
 					 smb_ses_list);
+			if (cifs_ses_exiting(ses))
+				continue;
 			list_for_each(tmp3, &ses->tcon_list) {
 				tcon = list_entry(tmp3,
 						  struct cifs_tcon,

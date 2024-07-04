@@ -259,6 +259,10 @@ static int nfc_llcp_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
+		if (optlen < sizeof(opt)) {
+			err = -EINVAL;
+			break;
+		}
 		if (get_user(opt, (u32 __user *) optval)) {
 			err = -EFAULT;
 			break;
@@ -281,6 +285,10 @@ static int nfc_llcp_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
+		if (optlen < sizeof(opt)) {
+			err = -EINVAL;
+			break;
+		}
 		if (get_user(opt, (u32 __user *) optval)) {
 			err = -EFAULT;
 			break;

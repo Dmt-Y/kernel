@@ -300,6 +300,7 @@ EXPORT_SYMBOL(drm_sched_entity_flush);
 void drm_sched_entity_fini(struct drm_sched_entity *entity)
 {
 	struct drm_gpu_scheduler *sched;
+	struct dma_fence *f;
 
 	sched = entity->rq->sched;
 	drm_sched_rq_remove_entity(entity->rq, entity);
@@ -325,6 +326,11 @@ void drm_sched_entity_fini(struct drm_sched_entity *entity)
 
 		while ((job = to_drm_sched_job(spsc_queue_pop(&entity->job_queue)))) {
 			struct drm_sched_fence *s_fence = job->s_fence;
+
+			/* Wait for all dependencies to avoid data corruptions */
+			while ((f = job->sched->ops->dependency(job, entity)))
+				dma_fence_wait(f, false);
+
 			drm_sched_fence_scheduled(s_fence);
 			dma_fence_set_error(&s_fence->finished, -ESRCH);
 

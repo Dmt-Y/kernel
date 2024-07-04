@@ -2513,8 +2513,10 @@ again:
 			nritems = btrfs_header_nritems(path->nodes[0]);
 			if (path->slots[0] >= nritems) {
 				ret = btrfs_next_leaf(root, path);
-				if (ret)
+				if (ret == 1)
 					break;
+				else if (ret < 0)
+					goto out;
 			}
 			btrfs_item_key_to_cpu(path->nodes[0], &found_key,
 					      path->slots[0]);
@@ -3292,8 +3294,11 @@ out_wake_log_root:
 	mutex_unlock(&log_root_tree->log_mutex);
 
 	/*
-	 * The barrier before waitqueue_active is implied by mutex_unlock
+	 * The barrier before waitqueue_active is needed so all the updates
+	 * above are seen by the woken threads. It might not be necessary, but
+	 * proving that seems to be hard.
 	 */
+	smp_mb();
 	if (waitqueue_active(&log_root_tree->log_commit_wait[index2]))
 		wake_up(&log_root_tree->log_commit_wait[index2]);
 out:
@@ -3304,8 +3309,11 @@ out:
 	mutex_unlock(&root->log_mutex);
 
 	/*
-	 * The barrier before waitqueue_active is implied by mutex_unlock
+	 * The barrier before waitqueue_active is needed so all the updates
+	 * above are seen by the woken threads. It might not be necessary, but
+	 * proving that seems to be hard.
 	 */
+	smp_mb();
 	if (waitqueue_active(&root->log_commit_wait[index1]))
 		wake_up(&root->log_commit_wait[index1]);
 	return ret;
@@ -3742,8 +3750,11 @@ static noinline int log_dir_items(struct btrfs_trans_handle *trans,
 		 * from this directory and from this transaction
 		 */
 		ret = btrfs_next_leaf(root, path);
-		if (ret == 1) {
-			last_offset = (u64)-1;
+		if (ret) {
+			if (ret == 1)
+				last_offset = (u64)-1;
+			else
+				err = ret;
 			goto done;
 		}
 		btrfs_item_key_to_cpu(path->nodes[0], &tmp, path->slots[0]);
@@ -3879,6 +3890,21 @@ static int drop_objectid_items(struct btrfs_trans_handle *trans,
 	btrfs_release_path(path);
 	if (ret > 0)
 		ret = 0;
+	return ret;
+}
+
+static int truncate_inode_items(struct btrfs_trans_handle *trans,
+				struct btrfs_root *log_root,
+				struct btrfs_inode *inode,
+				u64 new_size, u32 min_type)
+{
+	int ret;
+
+	do {
+		ret = btrfs_truncate_inode_items(trans, log_root, inode,
+						 new_size, min_type, NULL);
+	} while (ret == -EAGAIN);
+
 	return ret;
 }
 
@@ -4297,6 +4323,7 @@ static int btrfs_log_prealloc_extents(struct btrfs_trans_handle *trans,
 	bool dropped_extents = false;
 	u64 truncate_offset = i_size;
 	struct extent_buffer *leaf;
+	struct btrfs_file_extent_item *ei;
 	int slot;
 	int ins_nr = 0;
 	int start_slot;
@@ -4325,8 +4352,6 @@ static int btrfs_log_prealloc_extents(struct btrfs_trans_handle *trans,
 		goto out;
 
 	if (ret == 0) {
-		struct btrfs_file_extent_item *ei;
-
 		leaf = path->nodes[0];
 		slot = path->slots[0];
 		ei = btrfs_item_ptr(leaf, slot, struct btrfs_file_extent_item);
@@ -4377,22 +4402,25 @@ static int btrfs_log_prealloc_extents(struct btrfs_trans_handle *trans,
 			path->slots[0]++;
 			continue;
 		}
-		if (!dropped_extents) {
-			/*
-			 * Avoid logging extent items logged in past fsync calls
-			 * and leading to duplicate keys in the log tree.
-			 */
-			do {
-				ret = btrfs_truncate_inode_items(trans,
-							 root->log_root,
-							 &inode->vfs_inode,
-							 truncate_offset,
-							 BTRFS_EXTENT_DATA_KEY);
-			} while (ret == -EAGAIN);
+		/*
+		 * Avoid overlapping items in the log tree. The first time we
+		 * get here, get rid of everything from a past fsync. After
+		 * that, if the current extent starts before the end of the last
+		 * extent we copied, truncate the last one. This can happen if
+		 * an ordered extent completion modifies the subvolume tree
+		 * while btrfs_next_leaf() has the tree unlocked.
+		 */
+		if (!dropped_extents || key.offset < truncate_offset) {
+			ret = truncate_inode_items(trans, root->log_root, inode,
+						   min(key.offset, truncate_offset),
+						   BTRFS_EXTENT_DATA_KEY);
 			if (ret)
 				goto out;
 			dropped_extents = true;
 		}
+		ei = btrfs_item_ptr(leaf, slot, struct btrfs_file_extent_item);
+		truncate_offset = key.offset +
+			btrfs_file_extent_num_bytes(leaf, ei);
 		if (ins_nr == 0)
 			start_slot = slot;
 		ins_nr++;
@@ -5199,12 +5227,7 @@ static int btrfs_log_inode(struct btrfs_trans_handle *trans,
 					  &inode->runtime_flags);
 				clear_bit(BTRFS_INODE_COPY_EVERYTHING,
 					  &inode->runtime_flags);
-				while(1) {
-					ret = btrfs_truncate_inode_items(trans,
-						log, &inode->vfs_inode, 0, 0);
-					if (ret != -EAGAIN)
-						break;
-				}
+				ret = truncate_inode_items(trans, log, inode, 0, 0);
 			}
 		} else if (test_and_clear_bit(BTRFS_INODE_COPY_EVERYTHING,
 					      &inode->runtime_flags) ||

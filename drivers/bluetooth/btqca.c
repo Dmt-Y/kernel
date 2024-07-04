@@ -108,8 +108,9 @@ static int rome_reset(struct hci_dev *hdev)
 	return 0;
 }
 
-static void rome_tlv_check_data(struct rome_config *config,
-				const struct firmware *fw)
+static int rome_tlv_check_data(struct rome_config *config,
+				const struct firmware *fw,
+				int fw_size)
 {
 	const u8 *data;
 	u32 type_len;
@@ -129,6 +130,8 @@ static void rome_tlv_check_data(struct rome_config *config,
 
 	switch (config->type) {
 	case TLV_TYPE_PATCH:
+		if (fw_size < sizeof(struct tlv_type_hdr) + sizeof(struct tlv_type_patch))
+			return -EINVAL;
 		tlv_patch = (struct tlv_type_patch *)tlv->data;
 		BT_DBG("Total Length\t\t : %d bytes",
 		       le32_to_cpu(tlv_patch->total_size));
@@ -153,9 +156,12 @@ static void rome_tlv_check_data(struct rome_config *config,
 		break;
 
 	case TLV_TYPE_NVM:
+		if (fw_size < sizeof(struct tlv_type_hdr))
+			return -EINVAL;
+
 		idx = 0;
 		data = tlv->data;
-		while (idx < length) {
+		while (idx < length - sizeof(struct tlv_type_nvm)) {
 			tlv_nvm = (struct tlv_type_nvm *)(data + idx);
 
 			tag_id = le16_to_cpu(tlv_nvm->tag_id);
@@ -164,6 +170,8 @@ static void rome_tlv_check_data(struct rome_config *config,
 			/* Update NVM tags as needed */
 			switch (tag_id) {
 			case EDL_TAG_ID_HCI:
+				if (tag_len < 3)
+					return -EINVAL;
 				/* HCI transport layer parameters
 				 * enabling software inband sleep
 				 * onto controller side.
@@ -176,6 +184,8 @@ static void rome_tlv_check_data(struct rome_config *config,
 				break;
 
 			case EDL_TAG_ID_DEEP_SLEEP:
+				if (tag_len < 1)
+					return -EINVAL;
 				/* Sleep enable mask
 				 * enabling deep sleep feature on controller.
 				 */
@@ -190,8 +200,10 @@ static void rome_tlv_check_data(struct rome_config *config,
 
 	default:
 		BT_ERR("Unknown TLV type %d", config->type);
-		break;
+		return -EINVAL;
 	}
+
+	return 0;
 }
 
 static int rome_tlv_send_segment(struct hci_dev *hdev, int idx, int seg_size,
@@ -285,7 +297,7 @@ static int rome_download_firmware(struct hci_dev *hdev,
 				  struct rome_config *config)
 {
 	const struct firmware *fw;
-	int ret;
+	int ret, size;
 
 	bt_dev_info(hdev, "ROME Downloading %s", config->fwname);
 
@@ -296,7 +308,10 @@ static int rome_download_firmware(struct hci_dev *hdev,
 		return ret;
 	}
 
-	rome_tlv_check_data(config, fw);
+	size = fw->size;
+	ret = rome_tlv_check_data(config, fw, size);
+	if (ret)
+		goto out;
 
 	ret = rome_tlv_download_request(hdev, fw);
 	if (ret) {
@@ -304,6 +319,7 @@ static int rome_download_firmware(struct hci_dev *hdev,
 		       config->fwname, ret);
 	}
 
+out:
 	release_firmware(fw);
 
 	return ret;
