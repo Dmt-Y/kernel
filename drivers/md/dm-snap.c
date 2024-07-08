@@ -635,6 +635,7 @@ static void dm_exception_table_exit(struct dm_exception_table *et,
 
 		list_for_each_entry_safe (ex, next, slot, hash_list)
 			kmem_cache_free(mem, ex);
+			cond_resched();
 	}
 
 	vfree(et->table);
