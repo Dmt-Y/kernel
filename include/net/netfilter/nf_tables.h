@@ -393,6 +393,8 @@ struct nft_set {
 	u64				timeout;
 	u32				gc_int;
 	u16				policy;
+	/* alignment hole of 40 bytes due to alignemt */
+	struct kref			refs;
 	u16				udlen;
 	unsigned char			*udata;
 	/* runtime data below here */

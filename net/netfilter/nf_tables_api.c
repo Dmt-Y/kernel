@@ -282,6 +282,23 @@ static int nft_delrule_by_chain(struct nft_ctx *ctx)
 	return 0;
 }
 
+ 
+static void __nft_set_put(struct kref *kref)
+{
+	struct nft_set *set = container_of(kref, struct nft_set, refs);
+	kfree(set);
+}
+
+int nft_set_get(struct nft_set *set)
+{
+	return kref_get_unless_zero(&set->refs);
+}
+
+void nft_set_put(struct nft_set *set)
+{
+	kref_put(&set->refs, __nft_set_put);
+}
+
 static int nft_trans_set_add(struct nft_ctx *ctx, int msg_type,
 			     struct nft_set *set)
 {
@@ -296,6 +313,8 @@ static int nft_trans_set_add(struct nft_ctx *ctx, int msg_type,
 			ntohl(nla_get_be32(ctx->nla[NFTA_SET_ID]));
 		nft_activate_next(ctx->net, set);
 	}
+	if (!nft_set_get(set))
+		return -EAGAIN;
 	nft_trans_set(trans) = set;
 	list_add_tail(&trans->list, &ctx->net->nft.commit_list);
 
@@ -3126,6 +3145,7 @@ static int nf_tables_newset(struct net *net, struct sock *nlsk,
 	set->udata  = udata;
 	set->timeout = timeout;
 	set->gc_int = gc_int;
+	kref_init(&set->refs);
 
 	err = ops->init(set, &desc, nla);
 	if (err < 0)
@@ -3152,7 +3172,7 @@ static void nft_set_destroy(struct nft_set *set)
 {
 	set->ops->destroy(set);
 	module_put(set->ops->owner);
-	kfree(set);
+	nft_set_put(set);
 }
 
 static void nf_tables_set_destroy(const struct nft_ctx *ctx, struct nft_set *set)
