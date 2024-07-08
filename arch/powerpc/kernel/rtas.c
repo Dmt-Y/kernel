@@ -13,6 +13,7 @@
 
 #include <stdarg.h>
 #include <linux/kernel.h>
+#include <linux/nospec.h>
 #include <linux/types.h>
 #include <linux/spinlock.h>
 #include <linux/export.h>
@@ -1053,6 +1054,9 @@ asmlinkage int ppc_rtas(struct rtas_args __user *uargs)
 	    || nret > ARRAY_SIZE(args.args)
 	    || nargs + nret > ARRAY_SIZE(args.args))
 		return -EINVAL;
+
+	nargs = array_index_nospec(nargs, ARRAY_SIZE(args.args));
+	nret = array_index_nospec(nret, ARRAY_SIZE(args.args) - nargs);
 
 	/* Copy in args. */
 	if (copy_from_user(args.args, uargs->args,
