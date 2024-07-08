@@ -27,6 +27,7 @@
 #include <linux/extable.h>
 #include <linux/kdebug.h>
 #include <linux/kallsyms.h>
+#include <linux/kgdb.h>
 #include <linux/ftrace.h>
 #include <linux/frame.h>
 
@@ -277,9 +278,16 @@ static int can_optimize(unsigned long paddr)
 			return 0;
 		kernel_insn_init(&insn, (void *)recovered_insn, MAX_INSN_SIZE);
 		insn_get_length(&insn);
-		/* Another subsystem puts a breakpoint */
-		if (insn.opcode.bytes[0] == BREAKPOINT_INSTRUCTION)
+
+#ifdef CONFIG_KGDB
+		/*
+		 * If there is a dynamically installed kgdb sw breakpoint,
+		 * this function should not be probed.
+		 */
+		if (insn.opcode.bytes[0] == BREAKPOINT_INSTRUCTION &&
+		    kgdb_has_hit_break(addr))
 			return 0;
+#endif
 		/* Recover address */
 		insn.kaddr = (void *)addr;
 		insn.next_byte = (void *)(addr + insn.length);
