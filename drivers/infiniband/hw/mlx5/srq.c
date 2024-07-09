@@ -256,7 +256,7 @@ struct ib_srq *mlx5_ib_create_srq(struct ib_pd *pd,
 		mlx5_ib_dbg(dev, "max_wr %d,wr_cap %d,max_sge %d, sge_cap:%d\n",
 			    init_attr->attr.max_wr, max_srq_wqes,
 			    init_attr->attr.max_sge, max_sge_sz);
-		return -EINVAL;
+		return ERR_PTR(-EINVAL);
 	}
 
 	srq = kmalloc(sizeof(*srq), GFP_KERNEL);
