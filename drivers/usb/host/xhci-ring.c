@@ -263,6 +263,26 @@ static void inc_enq(struct xhci_hcd *xhci, struct xhci_ring *ring,
 	trace_xhci_inc_enq(ring);
 }
 
+static int xhci_num_trbs_to(struct xhci_segment *start_seg, union xhci_trb *start,
+			    struct xhci_segment *end_seg, union xhci_trb *end,
+			    unsigned int num_segs)
+{
+	union xhci_trb *last_on_seg;
+	int num = 0;
+	int i = 0;
+
+	do {
+		if (start_seg == end_seg && end >= start)
+			return num + (end - start);
+		last_on_seg = &start_seg->trbs[TRBS_PER_SEGMENT - 1];
+		num += last_on_seg - start;
+		start_seg = start_seg->next;
+		start = start_seg->trbs;
+	} while (i++ <= num_segs);
+
+	return -EINVAL;
+}
+
 /*
  * Check to see if there's room to enqueue num_trbs on the ring and make sure
  * enqueue pointer will not advance into dequeue segment. See rules above.
@@ -1997,6 +2017,7 @@ static int finish_td(struct xhci_hcd *xhci, struct xhci_td *td,
 	unsigned int slot_id;
 	u32 trb_comp_code;
 	int ep_index;
+	int trbs_freed;
 
 	slot_id = TRB_TO_SLOT_ID(le32_to_cpu(event->flags));
 	xdev = xhci->devs[slot_id];
@@ -2026,9 +2047,15 @@ static int finish_td(struct xhci_hcd *xhci, struct xhci_td *td,
 					ep_ring->stream_id, td, EP_HARD_RESET);
 	} else {
 		/* Update ring dequeue pointer */
+		trbs_freed = xhci_num_trbs_to(ep_ring->deq_seg, ep_ring->dequeue,
+					      td->last_trb_seg, td->last_trb,
+					      ep_ring->num_segs);
+		if (trbs_freed < 0)
+			xhci_dbg(xhci, "Failed to count freed trbs at TD finish\n");
+		else
+			ep_ring->num_trbs_free += trbs_freed;
 		ep_ring->dequeue = td->last_trb;
 		ep_ring->deq_seg = td->last_trb_seg;
-		ep_ring->num_trbs_free += td->num_trbs - 1;
 		inc_deq(xhci, ep_ring);
 	}
 
@@ -3225,6 +3252,7 @@ int xhci_queue_intr_tx(struct xhci_hcd *xhci, gfp_t mem_flags,
 		struct urb *urb, int slot_id, unsigned int ep_index)
 {
 	struct xhci_ep_ctx *ep_ctx;
+	int trbs_freed;
 
 	ep_ctx = xhci_get_ep_ctx(xhci, xhci->devs[slot_id]->out_ctx, ep_index);
 	check_interval(xhci, urb, ep_ctx);
