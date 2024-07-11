@@ -1989,7 +1989,7 @@ static int xhci_td_cleanup(struct xhci_hcd *xhci, struct xhci_td *td,
 }
 
 static int finish_td(struct xhci_hcd *xhci, struct xhci_td *td,
-	union xhci_trb *ep_trb, struct xhci_transfer_event *event,
+	struct xhci_transfer_event *event,
 	struct xhci_virt_ep *ep, int *status)
 {
 	struct xhci_virt_device *xdev;
@@ -2150,7 +2150,7 @@ static int process_ctrl_td(struct xhci_hcd *xhci, struct xhci_td *td,
 		td->urb->actual_length = requested;
 
 finish_td:
-	return finish_td(xhci, td, ep_trb, event, ep, status);
+	return finish_td(xhci, td, event, ep, status);
 }
 
 /*
@@ -2235,7 +2235,7 @@ static int process_isoc_td(struct xhci_hcd *xhci, struct xhci_td *td,
 
 	td->urb->actual_length += frame->actual_length;
 
-	return finish_td(xhci, td, ep_trb, event, ep, status);
+	return finish_td(xhci, td, event, ep, status);
 }
 
 static int skip_isoc_td(struct xhci_hcd *xhci, struct xhci_td *td,
@@ -2323,7 +2323,7 @@ finish_td:
 			  remaining);
 		td->urb->actual_length = 0;
 	}
-	return finish_td(xhci, td, ep_trb, event, ep, status);
+	return finish_td(xhci, td, event, ep, status);
 }
 
 /*
