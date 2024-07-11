@@ -187,6 +187,7 @@ static int scomp_acomp_comp_decomp(struct acomp_req *req, int dir)
 	const int cpu = get_cpu();
 	u8 *scratch_src = *per_cpu_ptr(scomp_src_scratches, cpu);
 	u8 *scratch_dst = *per_cpu_ptr(scomp_dst_scratches, cpu);
+	unsigned int dlen;
 	int ret;
 
 	if (!req->src || !req->slen || req->slen > SCOMP_SCRATCH_SIZE) {
@@ -202,6 +203,8 @@ static int scomp_acomp_comp_decomp(struct acomp_req *req, int dir)
 	if (!req->dlen || req->dlen > SCOMP_SCRATCH_SIZE)
 		req->dlen = SCOMP_SCRATCH_SIZE;
 
+	dlen = req->dlen;
+
 	scatterwalk_map_and_copy(scratch_src, req->src, 0, req->slen, 0);
 	if (dir)
 		ret = crypto_scomp_compress(scomp, scratch_src, req->slen,
@@ -214,6 +217,9 @@ static int scomp_acomp_comp_decomp(struct acomp_req *req, int dir)
 			req->dst = crypto_scomp_sg_alloc(req->dlen, GFP_ATOMIC);
 			if (!req->dst)
 				goto out;
+		} else if (req->dlen > dlen) {
+			ret = -ENOSPC;
+			goto out;
 		}
 		scatterwalk_map_and_copy(scratch_dst, req->dst, 0, req->dlen,
 					 1);
