@@ -372,6 +372,15 @@ out:
 	return NULL;
 }
 
+static inline int bt_copy_from_user(void *dst, size_t dst_size,
+				    const void __user *src, size_t src_size)
+{
+	if (dst_size > src_size)
+		return -EINVAL;
+
+	return copy_from_user(dst, src, dst_size);
+}
+
 int bt_to_errno(u16 code);
 
 void hci_sock_set_flag(struct sock *sk, int nr);
