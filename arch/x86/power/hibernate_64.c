@@ -213,8 +213,6 @@ struct restore_data_record {
 	unsigned long e820_checksum;
 };
 
-#define RESTORE_MAGIC	0x23456789ABCDEF01UL
-
 /**
  * get_e820_crc32- calculate crc32 according to given e820 table
  *
