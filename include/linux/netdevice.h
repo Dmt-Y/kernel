@@ -4172,6 +4172,11 @@ extern int		dev_weight_tx_bias;
 extern int		dev_rx_weight;
 extern int		dev_tx_weight;
 
+struct netdev_nested_priv {
+	unsigned char flags;
+	void *data;
+};
+
 bool netdev_has_upper_dev(struct net_device *dev, struct net_device *upper_dev);
 struct net_device *netdev_upper_get_next_dev_rcu(struct net_device *dev,
 						     struct list_head **iter);
