@@ -4379,7 +4379,7 @@ static const struct nft_object_type *__nft_obj_type_get(u32 objtype)
 {
 	const struct nft_object_type *type;
 
-	list_for_each_entry(type, &nf_tables_objects, list) {
+	list_for_each_entry_rcu(type, &nf_tables_objects, list) {
 		if (objtype == type->type)
 			return type;
 	}
@@ -4390,9 +4390,13 @@ static const struct nft_object_type *nft_obj_type_get(u32 objtype)
 {
 	const struct nft_object_type *type;
 
+	rcu_read_lock();
 	type = __nft_obj_type_get(objtype);
-	if (type != NULL && try_module_get(type->owner))
+	if (type != NULL && try_module_get(type->owner)) {
+		rcu_read_unlock();
 		return type;
+	}
+	rcu_read_unlock();
 
 #ifdef CONFIG_MODULES
 	if (type == NULL) {

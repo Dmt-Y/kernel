@@ -287,6 +287,9 @@ static int mlxsw_thermal_set_cur_state(struct thermal_cooling_device *cdev,
 	char mfsc_pl[MLXSW_REG_MFSC_LEN];
 	int err, idx;
 
+	if (state > MLXSW_THERMAL_MAX_STATE)
+		return -EINVAL;
+
 	idx = mlxsw_get_cooling_device_idx(thermal, cdev);
 	if (idx < 0)
 		return idx;
