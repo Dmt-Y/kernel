@@ -607,4 +607,6 @@ int tpm2_commit_space(struct tpm_chip *chip, struct tpm_space *space,
 
 int tpm_devs_add(struct tpm_chip *chip);
 void tpm_devs_remove(struct tpm_chip *chip);
+int tpm_dev_common_init(void);
+void tpm_dev_common_exit(void);
 #endif
