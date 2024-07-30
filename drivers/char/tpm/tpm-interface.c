@@ -491,7 +491,7 @@ static ssize_t tpm_try_transmit(struct tpm_chip *chip,
 	if (rc)
 		goto out;
 
-	rc = chip->ops->send(chip, (u8 *) buf, count);
+	rc = chip->ops->send(chip, buf, count);
 	if (rc < 0) {
 		if (rc != -EPIPE)
 			dev_err(&chip->dev,
@@ -537,7 +537,7 @@ static ssize_t tpm_try_transmit(struct tpm_chip *chip,
 	goto out;
 
 out_recv:
-	len = chip->ops->recv(chip, (u8 *) buf, bufsiz);
+	len = chip->ops->recv(chip, buf, bufsiz);
 	if (len < 0) {
 		rc = len;
 		dev_err(&chip->dev,
@@ -660,7 +660,7 @@ ssize_t tpm_transmit(struct tpm_chip *chip, struct tpm_space *space,
  *     A positive number for a TPM error.
  */
 ssize_t tpm_transmit_cmd(struct tpm_chip *chip, struct tpm_space *space,
-			 const void *buf, size_t bufsiz,
+			 void *buf, size_t bufsiz,
 			 size_t min_rsp_body_length, unsigned int flags,
 			 const char *desc)
 {
@@ -668,7 +668,7 @@ ssize_t tpm_transmit_cmd(struct tpm_chip *chip, struct tpm_space *space,
 	int err;
 	ssize_t len;
 
-	len = tpm_transmit(chip, space, (u8 *)buf, bufsiz, flags);
+	len = tpm_transmit(chip, space, buf, bufsiz, flags);
 	if (len <  0)
 		return len;
 
