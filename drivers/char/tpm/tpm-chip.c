@@ -351,7 +351,7 @@ struct tpm_chip *tpm_chip_alloc(struct device *pdev,
 	cdev_init(&chip->cdev, &tpm_fops);
 	chip->cdev.owner = THIS_MODULE;
 
-	rc = tpm2_init_space(&chip->work_space, TPM2_SPACE_BUFFER_SIZE);
+	rc = tpm2_init_space(&chip->work_space);
 	if (rc) {
 		rc = -ENOMEM;
 		goto out;
