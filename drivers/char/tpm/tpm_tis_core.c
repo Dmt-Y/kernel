@@ -882,11 +882,11 @@ int tpm_tis_core_init(struct device *dev, struct tpm_tis_data *priv, int irq,
 	tpm_tis_write32(priv, TPM_INT_ENABLE(priv->locality), intmask);
 	release_locality(chip, 0);
 
-	rc = tpm_chip_start(chip, 0);
+	rc = tpm_chip_start(chip);
 	if (rc)
 		goto out_err;
 	rc = tpm2_probe(chip);
-	tpm_chip_stop(chip, 0);
+	tpm_chip_stop(chip);
 	if (rc)
 		goto out_err;
 
