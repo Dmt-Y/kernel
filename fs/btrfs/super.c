@@ -2350,14 +2350,16 @@ static int btrfs_show_devname(struct seq_file *m, struct dentry *root)
 		}
 		cur_devices = cur_devices->seed;
 	}
-
+	/*
+	 * There should be always a valid pointer in latest_dev, it may be stale
+	 * for a short moment in case it's being deleted but still valid until
+	 * the end of RCU grace period.
+	 */
 	if (first_dev) {
 		rcu_read_lock();
 		name = rcu_dereference(first_dev->name);
 		seq_escape(m, name->str, " \t\n\\");
 		rcu_read_unlock();
-	} else {
-		WARN_ON(1);
 	}
 	mutex_unlock(&fs_info->fs_devices->device_list_mutex);
 	return 0;
