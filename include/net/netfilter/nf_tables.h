@@ -1026,6 +1026,11 @@ static inline void *nft_obj_data(const struct nft_object *obj)
 	return (void *)obj->data;
 }
 
+static inline enum nft_data_types nft_set_datatype(const struct nft_set *set)
+{
+	return set->dtype == NFT_DATA_VERDICT ? NFT_DATA_VERDICT : NFT_DATA_VALUE;
+}
+
 #define nft_expr_obj(expr)	*((struct nft_object **)nft_expr_priv(expr))
 
 struct nft_object *nf_tables_obj_lookup(const struct nft_table *table,
