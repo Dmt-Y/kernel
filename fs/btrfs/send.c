@@ -2809,12 +2809,10 @@ out:
 
 struct recorded_ref {
 	struct list_head list;
-	char *dir_path;
 	char *name;
 	struct fs_path *full_path;
 	u64 dir;
 	u64 dir_gen;
-	int dir_path_len;
 	int name_len;
 	struct rb_node node;
 	struct rb_root *root;
@@ -2867,13 +2865,6 @@ static int __record_ref(struct list_head *head, u64 dir,
 	ref->dir = dir;
 	ref->dir_gen = dir_gen;
 	set_ref_path(ref, path);
-	ref->dir_path = ref->full_path->start;
-	if (ref->name == ref->full_path->start)
-		ref->dir_path_len = 0;
-	else
-		ref->dir_path_len = ref->full_path->end -
-				ref->full_path->start - 1 - ref->name_len;
-
 	list_add_tail(&ref->list, head);
 	return 0;
 }
