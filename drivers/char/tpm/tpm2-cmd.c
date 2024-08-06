@@ -778,6 +778,7 @@ unsigned long tpm2_calc_ordinal_duration(struct tpm_chip *chip, u32 ordinal)
 
 	return duration;
 }
+EXPORT_SYMBOL_GPL(tpm2_calc_ordinal_duration);
 
 /**
  * tpm2_do_selftest() - ensure that all self tests have passed
