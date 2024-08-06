@@ -808,14 +808,21 @@ void tpm2_shutdown(struct tpm_chip *chip, u16 shutdown_type)
  */
 unsigned long tpm2_calc_ordinal_duration(struct tpm_chip *chip, u32 ordinal)
 {
-	int index = TPM_UNDEFINED;
+	unsigned index = TPM_UNDEFINED;
 	int duration = 0;
 
 	if (ordinal >= TPM2_CC_FIRST && ordinal <= TPM2_CC_LAST)
 		index = tpm2_ordinal_duration[ordinal - TPM2_CC_FIRST];
 
-	if (index != TPM_UNDEFINED)
+	/* genksyms checks the symbol, not the value. Although
+	 * TPM_NUM_DURATIONS is 3 for modversion to not change the array size
+	 * cannot be specified as TPM_NUM_DURATIONS, it must be a literal 3 */
+	BUILD_BUG_ON(TPM_NUM_DURATIONS != 3);
+	if (index < TPM_NUM_DURATIONS)
 		duration = chip->duration[index];
+
+	if (index == TPM_LONG_LONG)
+		msecs_to_jiffies(TPM2_DURATION_LONG_LONG);
 
 	if (duration <= 0)
 		duration = msecs_to_jiffies(TPM2_DURATION_DEFAULT);

@@ -69,9 +69,9 @@ enum tpm_duration {
 	TPM_SHORT = 0,
 	TPM_MEDIUM = 1,
 	TPM_LONG = 2,
-	TPM_LONG_LONG = 3,
 	TPM_UNDEFINED,
 	TPM_NUM_DURATIONS = TPM_UNDEFINED,
+	TPM_LONG_LONG, /* custom duration, not stored in struct chip */
 };
 
 #define TPM_WARN_RETRY          0x800
@@ -239,7 +239,7 @@ struct tpm_chip {
 	unsigned long timeout_c; /* jiffies */
 	unsigned long timeout_d; /* jiffies */
 	bool timeout_adjusted;
-	unsigned long duration[TPM_NUM_DURATIONS]; /* jiffies */
+	unsigned long duration[3]; /* jiffies */
 	bool duration_adjusted;
 
 	struct dentry *bios_dir[TPM_NUM_EVENT_LOG_FILES];
