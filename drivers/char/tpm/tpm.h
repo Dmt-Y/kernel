@@ -254,8 +254,10 @@ struct tpm_chip {
 #endif /* CONFIG_ACPI */
 
 	struct tpm_space work_space;
-	u32 last_cc;
 	u32 nr_commands;
+#ifndef __GENKSYMS__
+	u32 last_cc;
+#endif
 	u32 *cc_attrs_tbl;
 
 	/* active locality */
