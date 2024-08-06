@@ -480,14 +480,13 @@ static const struct tis_vendor_timeout_override vendor_timeout_overrides[] = {
 			(TIS_SHORT_TIMEOUT*1000), (TIS_SHORT_TIMEOUT*1000) } },
 };
 
-static void tpm_tis_update_timeouts(struct tpm_chip *chip,
+static bool tpm_tis_update_timeouts(struct tpm_chip *chip,
 				    unsigned long *timeout_cap)
 {
 	struct tpm_tis_data *priv = dev_get_drvdata(&chip->dev);
 	int i, rc;
 	u32 did_vid;
-
-	chip->timeout_adjusted = false;
+	bool adjusted = false;
 
 	if (chip->ops->clk_enable != NULL)
 		chip->ops->clk_enable(chip, true);
@@ -504,14 +503,14 @@ static void tpm_tis_update_timeouts(struct tpm_chip *chip,
 			continue;
 		memcpy(timeout_cap, vendor_timeout_overrides[i].timeout_us,
 		       sizeof(vendor_timeout_overrides[i].timeout_us));
-		chip->timeout_adjusted = true;
+		adjusted = true;
 	}
 
 out:
 	if (chip->ops->clk_enable != NULL)
 		chip->ops->clk_enable(chip, false);
 
-	return;
+	return adjusted;
 }
 
 /*
