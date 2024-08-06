@@ -468,8 +468,9 @@ EXPORT_SYMBOL_GPL(tpm_is_tpm2);
  *
  * Return: same as with tpm_transmit_cmd()
  */
-int tpm_pcr_read(struct tpm_chip *chip, u32 pcr_idx, u8 *res_buf)
+int tpm_pcr_read(struct tpm_chip *chip, int __pcr_idx, u8 *res_buf)
 {
+	u32 pcr_idx = __pcr_idx;
 	int rc;
 
 	chip = tpm_find_get_ops(chip);
@@ -498,8 +499,9 @@ EXPORT_SYMBOL_GPL(tpm_pcr_read);
  *
  * Return: same as with tpm_transmit_cmd()
  */
-int tpm_pcr_extend(struct tpm_chip *chip, u32 pcr_idx, const u8 *hash)
+int tpm_pcr_extend(struct tpm_chip *chip, int __pcr_idx, const u8 *hash)
 {
+	u32 pcr_idx = __pcr_idx;
 	int rc;
 	struct tpm2_digest digest_list[ARRAY_SIZE(chip->active_banks)];
 	u32 count = 0;
