@@ -38,6 +38,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/dma-mapping.h>
 
 #include <asm/irq.h>
@@ -1805,7 +1806,7 @@ imx_console_write(struct console *co, const char *s, unsigned int count)
 {
 	struct imx_port *sport = imx_ports[co->index];
 	struct imx_port_ucrs old_ucr;
-	unsigned int ucr1;
+	unsigned int ucr1, usr2;
 	unsigned long flags = 0;
 	int locked = 1;
 
@@ -1837,8 +1838,9 @@ imx_console_write(struct console *co, const char *s, unsigned int count)
 	 *	Finally, wait for transmitter to become empty
 	 *	and restore UCR1/2/3
 	 */
-	while (!(readl(sport->port.membase + USR2) & USR2_TXDC));
-
+	readx_poll_timeout_atomic(readl, sport->port.membase + USR2,
+				  usr2, usr2 & USR2_TXDC,
+				  0, USEC_PER_SEC);
 	imx_port_ucrs_restore(&sport->port, &old_ucr);
 
 	if (locked)
