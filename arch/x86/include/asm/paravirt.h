@@ -942,27 +942,6 @@ extern void default_banner(void);
 	pop %edx; pop %ecx
 #else	/* !CONFIG_X86_32 */
 
-/*
- * If swapgs is used while the userspace stack is still current,
- * there's no way to call a pvop.  The PV replacement *must* be
- * inlined, or the swapgs instruction must be trapped and emulated.
- */
-#define SWAPGS_UNSAFE_STACK						\
-	PARA_SITE(PARA_PATCH(pv_cpu_ops, PV_CPU_swapgs), CLBR_NONE,	\
-		  swapgs)
-
-/*
- * Note: swapgs is very special, and in practise is either going to be
- * implemented with a single "swapgs" instruction or something very
- * special.  Either way, we don't need to save any registers for
- * it.
- */
-#define SWAPGS								\
-	PARA_SITE(PARA_PATCH(pv_cpu_ops, PV_CPU_swapgs), CLBR_NONE,	\
-		  ANNOTATE_RETPOLINE_SAFE;					\
-		  call PARA_INDIRECT(pv_cpu_ops+PV_CPU_swapgs);		\
-		 )
-
 #define GET_CR2_INTO_RAX				\
 	ANNOTATE_RETPOLINE_SAFE;				\
 	call PARA_INDIRECT(pv_mmu_ops+PV_MMU_read_cr2);

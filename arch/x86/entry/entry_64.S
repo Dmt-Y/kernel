@@ -719,7 +719,7 @@ native_irq_return_ldt:
 	 */
 
 	pushq	%rdi				/* Stash user RDI */
-	SWAPGS					/* to kernel GS */
+	swapgs					/* to kernel GS */
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rdi	/* to kernel CR3 */
 	UNTRAIN_RET
 
@@ -750,7 +750,7 @@ native_irq_return_ldt:
 	orq	PER_CPU_VAR(espfix_stack), %rax
 
 	SWITCH_TO_USER_CR3_STACK scratch_reg=%rdi
-	SWAPGS					/* to user GS */
+	swapgs					/* to user GS */
 	popq	%rdi				/* Restore user RDI */
 
 	movq	%rax, %rsp
@@ -1187,7 +1187,7 @@ ENTRY(paranoid_entry)
 	rdmsr
 	testl	%edx, %edx
 	js	1f				/* negative -> in kernel */
-	SWAPGS
+	swapgs
 	xorl	%ebx, %ebx
 1:
 	SAVE_AND_SWITCH_TO_KERNEL_CR3 scratch_reg=%rax save_reg=%r14
@@ -1238,7 +1238,7 @@ ENTRY(paranoid_exit)
 	jnz	.Lparanoid_exit_no_swapgs
 	TRACE_IRQS_IRETQ
 	RESTORE_CR3	scratch_reg=%rbx save_reg=%r14
-	SWAPGS_UNSAFE_STACK
+	swapgs
 	jmp	.Lparanoid_exit_restore
 .Lparanoid_exit_no_swapgs:
 	TRACE_IRQS_IRETQ_DEBUG
@@ -1676,7 +1676,7 @@ end_repeat_nmi:
 	testl	%ebx, %ebx			/* swapgs needed? */
 	jnz	nmi_restore
 nmi_swapgs:
-	SWAPGS_UNSAFE_STACK
+	swapgs
 nmi_restore:
 	POP_REGS
 

@@ -376,7 +376,6 @@ __visible struct pv_cpu_ops pv_cpu_ops = {
 	.usergs_sysret64 = native_usergs_sysret64,
 #endif
 	.iret = native_iret,
-	.swapgs = native_swapgs,
 
 	.set_iopl_mask = native_set_iopl_mask,
 	.io_delay = native_io_delay,
