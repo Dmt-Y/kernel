@@ -126,13 +126,6 @@ static inline notrace unsigned long arch_local_irq_save(void)
 #define PARAVIRT_ADJUST_EXCEPTION_FRAME	/*  */
 
 #define INTERRUPT_RETURN	jmp native_iret
-#define USERGS_SYSRET64				\
-	swapgs;					\
-	CLEAR_CPU_BUFFERS			\
-	sysretq;
-#define USERGS_SYSRET32				\
-	swapgs;					\
-	sysretl
 
 #ifdef CONFIG_DEBUG_ENTRY
 #define SAVE_FLAGS(x)		pushfq; popq %rax

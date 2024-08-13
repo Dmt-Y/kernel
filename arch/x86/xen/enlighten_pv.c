@@ -1104,7 +1104,6 @@ static const struct pv_cpu_ops xen_cpu_ops __initconst = {
 
 	.iret = xen_iret,
 #ifdef CONFIG_X86_64
-	.usergs_sysret64 = xen_sysret64,
 #endif
 
 	.load_tr_desc = paravirt_nop,

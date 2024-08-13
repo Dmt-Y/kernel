@@ -946,12 +946,6 @@ extern void default_banner(void);
 	ANNOTATE_RETPOLINE_SAFE;				\
 	call PARA_INDIRECT(pv_mmu_ops+PV_MMU_read_cr2);
 
-#define USERGS_SYSRET64							\
-	PARA_SITE(PARA_PATCH(pv_cpu_ops, PV_CPU_usergs_sysret64),	\
-		  CLBR_NONE,						\
-		  ANNOTATE_RETPOLINE_SAFE;					\
-		  jmp PARA_INDIRECT(pv_cpu_ops+PV_CPU_usergs_sysret64);)
-
 #ifdef CONFIG_DEBUG_ENTRY
 #define SAVE_FLAGS(clobbers)                                        \
 	PARA_SITE(PARA_PATCH(pv_irq_ops, PV_IRQ_save_fl), clobbers, \
