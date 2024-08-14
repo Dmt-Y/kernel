@@ -1104,7 +1104,6 @@ static const struct pv_cpu_ops xen_cpu_ops __initconst = {
 
 	.iret = xen_iret,
 #ifdef CONFIG_X86_64
-	.usergs_sysret64 = xen_sysret64,
 #endif
 
 	.load_tr_desc = paravirt_nop,
@@ -1129,9 +1128,6 @@ static const struct pv_cpu_ops xen_cpu_ops __initconst = {
 
 	.set_iopl_mask = xen_set_iopl_mask,
 	.io_delay = xen_io_delay,
-
-	/* Xen takes care of %gs when switching to usermode for us */
-	.swapgs = paravirt_nop,
 
 	.start_context_switch = paravirt_start_context_switch,
 	.end_context_switch = xen_end_context_switch,
