@@ -1083,10 +1083,9 @@ static void cgroup_destroy_root(struct cgroup_root *root)
 
 	cgroup_exit_root_id(root);
 
-	mutex_unlock(&cgroup_mutex);
-
 	kernfs_destroy_root(root->kf_root);
 	cgroup_free_root(root);
+	mutex_unlock(&cgroup_mutex);
 }
 
 /*

@@ -164,8 +164,7 @@ unsigned paravirt_patch_default(u8 type, u16 clobbers, void *insnbuf,
 	else if (opfunc == _paravirt_ident_64)
 		ret = paravirt_patch_ident_64(insnbuf, len);
 
-	else if (type == PARAVIRT_PATCH(pv_cpu_ops.iret) ||
-		 type == PARAVIRT_PATCH(pv_cpu_ops.usergs_sysret64))
+	else if (type == PARAVIRT_PATCH(pv_cpu_ops.iret))
 		/* If operation requires a jmp, then jmp */
 		ret = paravirt_patch_jmp(insnbuf, opfunc, addr, len);
 	else
@@ -219,7 +218,6 @@ static u64 native_steal_clock(int cpu)
 
 /* These are in entry.S */
 extern void native_iret(void);
-extern void native_usergs_sysret64(void);
 
 static struct resource reserve_ioports = {
 	.start = 0,
@@ -372,11 +370,7 @@ __visible struct pv_cpu_ops pv_cpu_ops = {
 
 	.load_sp0 = native_load_sp0,
 
-#ifdef CONFIG_X86_64
-	.usergs_sysret64 = native_usergs_sysret64,
-#endif
 	.iret = native_iret,
-	.swapgs = native_swapgs,
 
 	.set_iopl_mask = native_set_iopl_mask,
 	.io_delay = native_io_delay,

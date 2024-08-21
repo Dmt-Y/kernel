@@ -421,7 +421,8 @@ Description:	Control Symetric Multi Threading (SMT)
 			 "notsupported" SMT is not supported by the CPU
 
 			 If control status is "forceoff" or "notsupported" writes
-			 are rejected.
+			 are rejected. Note that enabling SMT on PowerPC skips
+			 offline cores.
 
 What:		/sys/devices/system/cpu/umwait_control
 		/sys/devices/system/cpu/umwait_control/enable_c02
