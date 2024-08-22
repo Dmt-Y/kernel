@@ -14,6 +14,9 @@
 #include <linux/module.h>
 #include <linux/random.h>
 #include <linux/interrupt.h>
+#ifndef __GENKSYMS__
+#include <linux/irqdomain.h>
+#endif
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/sched/rt.h>
@@ -1540,6 +1543,7 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 	/* If this was the last handler, shut down the IRQ line: */
 	if (!desc->action) {
 		irq_settings_clr_disable_unlazy(desc);
+		/* Only shutdown. Deactivate after synchronize_hardirq() */
 		irq_shutdown(desc);
 		irq_release_resources(desc);
 	}
@@ -1581,6 +1585,16 @@ static struct irqaction *__free_irq(unsigned int irq, void *dev_id)
 			kthread_stop(action->secondary->thread);
 			put_task_struct(action->secondary->thread);
 		}
+	}
+
+	if (!desc->action) {
+		/*
+		 * There is no interrupt on the fly anymore. Deactivate it
+		 * completely.
+		 */
+		raw_spin_lock_irqsave(&desc->lock, flags);
+		irq_domain_deactivate_irq(&desc->irq_data);
+		raw_spin_unlock_irqrestore(&desc->lock, flags);
 	}
 
 	irq_chip_pm_put(&desc->irq_data);
