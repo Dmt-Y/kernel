@@ -47,6 +47,7 @@ enum {
  * IRQS_WAITING			- irq is waiting
  * IRQS_PENDING			- irq is pending and replayed later
  * IRQS_SUSPENDED		- irq is suspended
+ * IRQS_SYSFS			- descriptor has been added to sysfs
  */
 enum {
 	IRQS_AUTODETECT		= 0x00000001,
@@ -57,6 +58,7 @@ enum {
 	IRQS_WAITING		= 0x00000080,
 	IRQS_PENDING		= 0x00000200,
 	IRQS_SUSPENDED		= 0x00000800,
+	IRQS_SYSFS		= 0x00004000,
 };
 
 #include "debug.h"
