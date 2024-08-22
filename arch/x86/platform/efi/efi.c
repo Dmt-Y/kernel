@@ -542,6 +542,13 @@ void __init efi_init(void)
 		efi.systab->hdr.revision >> 16,
 		efi.systab->hdr.revision & 0xffff, vendor);
 
+	if (IS_ENABLED(CONFIG_X86_64) &&
+	    efi.systab->hdr.revision > EFI_1_10_SYSTEM_TABLE_REVISION &&
+	    !strcmp(vendor, "Apple")) {
+		pr_info("Apple Mac detected, using EFI v1.10 runtime services only\n");
+		efi.runtime_version = EFI_1_10_SYSTEM_TABLE_REVISION;
+	}
+
 	if (efi_reuse_config(efi.systab->tables, efi.systab->nr_tables))
 		return;
 
