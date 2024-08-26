@@ -28,7 +28,9 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
+#ifndef __GENKSYMS__
 #include <linux/suspend.h>
+#endif
 #include <linux/freezer.h>
 
 #include "tpm.h"
