@@ -390,6 +390,7 @@ int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
 	struct msi_domain_info *info = domain->host_data;
 	struct msi_domain_ops *ops = info->ops;
 	msi_alloc_info_t arg;
+	struct irq_data *irq_data;
 	struct msi_desc *desc;
 	int i, ret, virq;
 
@@ -419,26 +420,25 @@ int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
 	if (ops->msi_finish)
 		ops->msi_finish(&arg, 0);
 
-	for_each_msi_entry(desc, dev) {
-		virq = desc->irq;
-		if (desc->nvec_used == 1)
-			dev_dbg(dev, "irq %d for MSI\n", virq);
-		else
+	/*
+	 * This flag is set by the PCI layer as we need to activate
+	 * the MSI entries before the PCI layer enables MSI in the
+	 * card. Otherwise the card latches a random msi message.
+	 */
+	if (!(info->flags & MSI_FLAG_ACTIVATE_EARLY))
+		return 0;
+
+	for_each_msi_vector(desc, i, dev) {
+		if (desc->irq == i) {
+			virq = desc->irq;
 			dev_dbg(dev, "irq [%d-%d] for MSI\n",
 				virq, virq + desc->nvec_used - 1);
-		/*
-		 * This flag is set by the PCI layer as we need to activate
-		 * the MSI entries before the PCI layer enables MSI in the
-		 * card. Otherwise the card latches a random msi message.
-		 */
-		if (info->flags & MSI_FLAG_ACTIVATE_EARLY) {
-			struct irq_data *irq_data;
-
-			irq_data = irq_domain_get_irq_data(domain, desc->irq);
-			if (domain->flags & IRQ_DOMAIN_MSI_NOMASK_QUIRK)
-				irqd_set_msi_nomask_quirk(irq_data);
-			irq_domain_activate_irq(irq_data);
 		}
+
+		irq_data = irq_domain_get_irq_data(domain, i);
+		if (domain->flags & IRQ_DOMAIN_MSI_NOMASK_QUIRK)
+			irqd_set_msi_nomask_quirk(irq_data);
+		irq_domain_activate_irq(irq_data);
 	}
 
 	return 0;
@@ -452,7 +452,15 @@ int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
  */
 void msi_domain_free_irqs(struct irq_domain *domain, struct device *dev)
 {
+	struct irq_data *irq_data;
 	struct msi_desc *desc;
+	int i;
+
+	for_each_msi_vector(desc, i, dev) {
+		irq_data = irq_domain_get_irq_data(domain, i);
+		if (irqd_is_activated(irq_data))
+			irq_domain_deactivate_irq(irq_data);
+	}
 
 	for_each_msi_entry(desc, dev) {
 		/*

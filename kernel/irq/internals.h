@@ -47,6 +47,7 @@ enum {
  * IRQS_WAITING			- irq is waiting
  * IRQS_PENDING			- irq is pending and replayed later
  * IRQS_SUSPENDED		- irq is suspended
+ * IRQS_SYSFS			- descriptor has been added to sysfs
  */
 enum {
 	IRQS_AUTODETECT		= 0x00000001,
@@ -57,6 +58,7 @@ enum {
 	IRQS_WAITING		= 0x00000080,
 	IRQS_PENDING		= 0x00000200,
 	IRQS_SUSPENDED		= 0x00000800,
+	IRQS_SYSFS		= 0x00004000,
 };
 
 #include "debug.h"
@@ -68,6 +70,7 @@ extern void __enable_irq(struct irq_desc *desc);
 
 extern int irq_startup(struct irq_desc *desc, bool resend);
 extern void irq_shutdown(struct irq_desc *desc);
+extern void irq_shutdown_and_deactivate(struct irq_desc *desc);
 extern void irq_enable(struct irq_desc *desc);
 extern void irq_disable(struct irq_desc *desc);
 extern void irq_percpu_enable(struct irq_desc *desc, unsigned int cpu);
@@ -108,8 +111,6 @@ static inline void unregister_handler_proc(unsigned int irq,
 #endif
 
 extern bool irq_can_set_affinity_usr(unsigned int irq);
-
-extern int irq_select_affinity_usr(unsigned int irq);
 
 extern void irq_set_thread_affinity(struct irq_desc *desc);
 
