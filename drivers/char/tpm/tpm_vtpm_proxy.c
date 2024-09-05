@@ -43,6 +43,7 @@ struct proxy_dev {
 #define STATE_OPENED_FLAG        BIT(0)
 #define STATE_WAIT_RESPONSE_FLAG BIT(1)  /* waiting for emulator response */
 #define STATE_REGISTERED_FLAG	 BIT(2)
+#define STATE_DRIVER_COMMAND     BIT(3)  /* sending a driver specific command */
 
 	size_t req_len;              /* length of queued TPM request */
 	size_t resp_len;             /* length of queued TPM response */
@@ -299,6 +300,28 @@ out:
 	return len;
 }
 
+static int vtpm_proxy_is_driver_command(struct tpm_chip *chip,
+					u8 *buf, size_t count)
+{
+	struct tpm_header *hdr = (struct tpm_header *)buf;
+
+	if (count < sizeof(struct tpm_header))
+		return 0;
+
+	if (chip->flags & TPM_CHIP_FLAG_TPM2) {
+		switch (be32_to_cpu(hdr->ordinal)) {
+		case TPM2_CC_SET_LOCALITY:
+			return 1;
+		}
+	} else {
+		switch (be32_to_cpu(hdr->ordinal)) {
+		case TPM_ORD_SET_LOCALITY:
+			return 1;
+		}
+	}
+	return 0;
+}
+
 /*
  * Called when core TPM driver forwards TPM requests to 'server side'.
  *
@@ -319,6 +342,10 @@ static int vtpm_proxy_tpm_op_send(struct tpm_chip *chip, u8 *buf, size_t count)
 			count, sizeof(proxy_dev->buffer));
 		return -EIO;
 	}
+
+	if (!(proxy_dev->state & STATE_DRIVER_COMMAND) &&
+	    vtpm_proxy_is_driver_command(chip, buf, count))
+		return -EFAULT;
 
 	mutex_lock(&proxy_dev->buf_lock);
 
@@ -374,7 +401,8 @@ static int vtpm_proxy_request_locality(struct tpm_chip *chip, int locality)
 {
 	struct tpm_buf buf;
 	int rc;
-	const struct tpm_output_header *header;
+	const struct tpm_header *header;
+	struct proxy_dev *proxy_dev = dev_get_drvdata(&chip->dev);
 
 	if (chip->flags & TPM_CHIP_FLAG_TPM2)
 		rc = tpm_buf_init(&buf, TPM2_ST_SESSIONS,
@@ -386,15 +414,18 @@ static int vtpm_proxy_request_locality(struct tpm_chip *chip, int locality)
 		return rc;
 	tpm_buf_append_u8(&buf, locality);
 
-	rc = tpm_transmit_cmd(chip, NULL, buf.data, tpm_buf_length(&buf), 0,
-			      TPM_TRANSMIT_UNLOCKED | TPM_TRANSMIT_RAW,
-			      "attempting to set locality");
+	proxy_dev->state |= STATE_DRIVER_COMMAND;
+
+	rc = tpm_transmit_cmd(chip, &buf, 0, "attempting to set locality");
+
+	proxy_dev->state &= ~STATE_DRIVER_COMMAND;
+
 	if (rc < 0) {
 		locality = rc;
 		goto out;
 	}
 
-	header = (const struct tpm_output_header *)buf.data;
+	header = (const struct tpm_header *)buf.data;
 	rc = be32_to_cpu(header->return_code);
 	if (rc)
 		locality = -1;
@@ -667,37 +698,21 @@ static struct miscdevice vtpmx_miscdev = {
 	.fops = &vtpmx_fops,
 };
 
-static int vtpmx_init(void)
-{
-	return misc_register(&vtpmx_miscdev);
-}
-
-static void vtpmx_cleanup(void)
-{
-	misc_deregister(&vtpmx_miscdev);
-}
-
 static int __init vtpm_module_init(void)
 {
 	int rc;
 
-	rc = vtpmx_init();
-	if (rc) {
-		pr_err("couldn't create vtpmx device\n");
-		return rc;
-	}
-
 	workqueue = create_workqueue("tpm-vtpm");
 	if (!workqueue) {
 		pr_err("couldn't create workqueue\n");
-		rc = -ENOMEM;
-		goto err_vtpmx_cleanup;
+		return -ENOMEM;
 	}
 
-	return 0;
-
-err_vtpmx_cleanup:
-	vtpmx_cleanup();
+	rc = misc_register(&vtpmx_miscdev);
+	if (rc) {
+		pr_err("couldn't create vtpmx device\n");
+		destroy_workqueue(workqueue);
+	}
 
 	return rc;
 }
@@ -705,7 +720,7 @@ err_vtpmx_cleanup:
 static void __exit vtpm_module_exit(void)
 {
 	destroy_workqueue(workqueue);
-	vtpmx_cleanup();
+	misc_deregister(&vtpmx_miscdev);
 }
 
 module_init(vtpm_module_init);
