@@ -14,7 +14,14 @@ struct mnt_namespace {
 	 * - taking namespace_sem for read AND taking .ns_lock.
 	 */
 	struct list_head	list;
+#ifndef __GENKSYMS__
+	/* mnt_namespace is completely opaque to modules.
+	 * We can make any change and no module can notice.
+	 * So we don't need to move this to the end, we just need to
+	 * hide it from the kabi checker.
+	 */
 	spinlock_t		ns_lock;
+#endif
 	struct user_namespace	*user_ns;
 	struct ucounts		*ucounts;
 	u64			seq;	/* Sequence number to prevent loops */
