@@ -1528,14 +1528,17 @@ static int acpi_ec_setup(struct acpi_ec *ec, bool handle_events)
 		return ret;
 
 	/* First EC capable of handling transactions */
-	if (!first_ec) {
+	if (!first_ec)
 		first_ec = ec;
-		acpi_handle_info(first_ec->handle, "Used as first EC\n");
+
+	pr_info("EC_CMD/EC_SC=0x%lx, EC_DATA=0x%lx\n", ec->command_addr,
+		ec->data_addr);
+
+	if (test_bit(EC_FLAGS_EVENT_HANDLER_INSTALLED, &ec->flags)) {
+		if (ec->gpe >= 0)
+			pr_info("GPE=0x%x\n", ec->gpe);
 	}
 
-	acpi_handle_info(ec->handle,
-			 "GPE=0x%x, EC_CMD/EC_SC=0x%lx, EC_DATA=0x%lx\n",
-			 ec->gpe, ec->command_addr, ec->data_addr);
 	return ret;
 }
 
