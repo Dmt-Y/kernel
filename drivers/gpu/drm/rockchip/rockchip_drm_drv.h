@@ -38,6 +38,12 @@
 /* output flags */
 #define ROCKCHIP_OUTPUT_DSI_DUAL	BIT(0)
 
+enum rockchip_drm_split_area {
+	ROCKCHIP_DRM_SPLIT_UNSET = 0,
+	ROCKCHIP_DRM_SPLIT_LEFT_SIDE = 1,
+	ROCKCHIP_DRM_SPLIT_RIGHT_SIDE = 2,
+};
+
 struct drm_device;
 struct drm_connector;
 struct iommu_domain;
@@ -90,6 +96,7 @@ extern struct platform_driver cdn_dp_driver;
 extern struct platform_driver dw_hdmi_rockchip_pltfm_driver;
 extern struct platform_driver dw_hdmi_qp_rockchip_pltfm_driver;
 extern struct platform_driver dw_mipi_dsi_rockchip_driver;
+extern struct platform_driver dw_mipi_dsi2_rockchip_driver;
 extern struct platform_driver inno_hdmi_driver;
 extern struct platform_driver rockchip_dp_driver;
 extern struct platform_driver rockchip_lvds_driver;
