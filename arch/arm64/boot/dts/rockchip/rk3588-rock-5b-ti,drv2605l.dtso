@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/rockchip.h>
+#include <dt-bindings/input/ti-drv260x.h>
+
+&i2c3 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-0 = <&i2c3m1_xfer>;
+	pinctrl-names = "default";
+	status = "okay";
+
+        haptics@5a {
+            compatible = "ti,drv2605l";
+            reg = <0x5a>;
+            //vbat-supply = <&vbat>;
+            enable-gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_HIGH>;
+            mode = <DRV260X_ERM_MODE>;
+            library-sel = <DRV260X_ERM_LIB_F>;
+		pinctrl-0 = <&drv2605l_int>;
+		pinctrl-names = "default";
+            vib-rated-mv = <3200>;
+            vib-overdrive-mv = <3200>;
+        };
+};
+
+&pinctrl {
+	haptics {
+		drv2605l_int: drv2605l_int {
+			rockchip,pins = <3 RK_PC1 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+};
