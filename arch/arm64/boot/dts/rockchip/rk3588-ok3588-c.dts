@@ -205,6 +205,16 @@
 	};
 };
 
+&can1 {
+	pinctrl-0 = <&can1m1_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&can2 {
+	status = "okay";
+};
+
 &gmac0 {
 	clock_in_out = "output";
 	phy-handle = <&rgmii_phy0>;
