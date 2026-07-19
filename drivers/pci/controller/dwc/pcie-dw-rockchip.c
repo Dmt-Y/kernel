@@ -862,15 +862,15 @@ static int rockchip_pcie_probe(struct platform_device *pdev)
 	if (ret)
 		goto deinit_phy;
 
+	ret = rockchip_pcie_clk_init(rockchip);
+	if (ret)
+		goto deinit_phy;
+
 	ret = phy_calibrate(rockchip->phy);
 	if (ret) {
 		dev_err(dev, "phy lock failed\n");
 		goto assert_controller;
 	}
-
-	ret = rockchip_pcie_clk_init(rockchip);
-	if (ret)
-		goto deinit_phy;
 
 	switch (data->mode) {
 	case DW_PCIE_RC_TYPE:
